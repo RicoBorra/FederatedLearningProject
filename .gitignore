@@ -1,1 +1,2 @@
-data
+data/femnist/data
+__pycache__
