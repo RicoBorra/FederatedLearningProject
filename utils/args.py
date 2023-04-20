@@ -11,6 +11,7 @@ def get_parser():
     parser.add_argument('--num_rounds', type=int, help='number of rounds')
     parser.add_argument('--num_epochs', type=int, help='number of local epochs')
     parser.add_argument('--clients_per_round', type=int, help='number of clients trained per round')
+    parser.add_argument('--selection', choices=['uniform', 'hybrid', 'poc'], default='uniform', type=str, help='criterion for selecting partecipating clients each round')
     parser.add_argument('--hnm', action='store_true', default=False, help='Use hard negative mining reduction or not')
     parser.add_argument('--lr', type=float, default=0.05, help='learning rate')
     parser.add_argument('--bs', type=int, default=4, help='batch size')

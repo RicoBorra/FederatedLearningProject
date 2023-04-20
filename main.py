@@ -13,12 +13,15 @@ import datasets.np_transforms as nptr
 
 from torch import nn
 from client import Client
-from datasets.femnist import Femnist
+from datasets.femnist import load_femnist
 from server import Server
 from utils.args import get_parser
 from datasets.idda import IDDADataset
 from models.deeplabv3 import deeplabv3_mobilenetv2
+import models.cnn as cnn
 from utils.stream_metrics import StreamSegMetrics, StreamClsMetrics
+
+import wandb
 
 
 def set_seed(random_seed):
@@ -44,12 +47,18 @@ def model_init(args):
         return deeplabv3_mobilenetv2(num_classes=get_dataset_num_classes(args.dataset))
     if args.model == 'resnet18':
         model = resnet18()
-        model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        model.fc = nn.Linear(in_features=512, out_features=get_dataset_num_classes(args.dataset))
+        model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(
+            7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        model.fc = nn.Linear(
+            in_features=512, out_features=get_dataset_num_classes(args.dataset))
         return model
     if args.model == 'cnn':
-        # TODO: missing code here!
-        raise NotImplementedError
+        return cnn.Network(
+            n_classes=get_dataset_num_classes(args.dataset),
+            learning_rate=args.lr,
+            momentum=args.m,
+            weight_decay=args.wd
+        )
     raise NotImplementedError
 
 
@@ -59,11 +68,13 @@ def get_transforms(args):
         train_transforms = sstr.Compose([
             sstr.RandomResizedCrop((512, 928), scale=(0.5, 2.0)),
             sstr.ToTensor(),
-            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            sstr.Normalize(mean=[0.485, 0.456, 0.406],
+                           std=[0.229, 0.224, 0.225])
         ])
         test_transforms = sstr.Compose([
             sstr.ToTensor(),
-            sstr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            sstr.Normalize(mean=[0.485, 0.456, 0.406],
+                           std=[0.229, 0.224, 0.225])
         ])
     elif args.model == 'cnn' or args.model == 'resnet18':
         train_transforms = nptr.Compose([
@@ -79,24 +90,7 @@ def get_transforms(args):
     return train_transforms, test_transforms
 
 
-def read_femnist_dir(data_dir):
-    data = defaultdict(lambda: {})
-    files = os.listdir(data_dir)
-    files = [f for f in files if f.endswith('.json')]
-    for f in files:
-        file_path = os.path.join(data_dir, f)
-        with open(file_path, 'r') as inf:
-            cdata = json.load(inf)
-        data.update(cdata['user_data'])
-    return data
-
-
-def read_femnist_data(train_data_dir, test_data_dir):
-    return read_femnist_dir(train_data_dir), read_femnist_dir(test_data_dir)
-
-
 def get_datasets(args):
-
     train_datasets = []
     train_transforms, test_transforms = get_transforms(args)
 
@@ -116,22 +110,15 @@ def get_datasets(args):
             test_diff_dom_dataset = IDDADataset(root=root, list_samples=test_diff_dom_data, transform=test_transforms,
                                                 client_name='test_diff_dom')
         test_datasets = [test_same_dom_dataset, test_diff_dom_dataset]
-
     elif args.dataset == 'femnist':
-        niid = args.niid
-        train_data_dir = os.path.join('data', 'femnist', 'data', 'niid' if niid else 'iid', 'train')
-        test_data_dir = os.path.join('data', 'femnist', 'data', 'niid' if niid else 'iid', 'test')
-        train_data, test_data = read_femnist_data(train_data_dir, test_data_dir)
-
+        directory = os.path.join(
+            'data', 'femnist', 'compressed', 'niid' if args.niid else 'iid')
         train_transforms, test_transforms = get_transforms(args)
-
-        train_datasets, test_datasets = [], []
-
-        for user, data in train_data.items():
-            train_datasets.append(Femnist(data, train_transforms, user))
-        for user, data in test_data.items():
-            test_datasets.append(Femnist(data, test_transforms, user))
-
+        train_datasets, test_datasets = load_femnist(
+            directory,
+            transforms=(train_transforms, test_transforms),
+            as_csv=False
+        )
     else:
         raise NotImplementedError
 
@@ -160,7 +147,7 @@ def gen_clients(args, train_datasets, test_datasets, model):
     clients = [[], []]
     for i, datasets in enumerate([train_datasets, test_datasets]):
         for ds in datasets:
-            clients[i].append(Client(args, ds, model, test_client=i == 1))
+            clients[i].append(Client(args, ds, model, test_client=(i == 1)))
     return clients[0], clients[1]
 
 
@@ -168,20 +155,44 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
     set_seed(args.seed)
-
+    # model is compiled to CPU and operates on GPU for
+    # algebraic operations
     print(f'Initializing model...')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model_init(args)
-    model.cuda()
+    # model = torch.compile(model)
+    model = model.to(device)
     print('Done.')
-
+    # federated datasets are shared among training and testing clients
     print('Generate datasets...')
     train_datasets, test_datasets = get_datasets(args)
     print('Done.')
-
+    # initialize configuration for weights & biases log
+    wandb.init(
+        project='mldl23-fl',
+        config={
+            'seed': args.seed,
+            'dataset': args.dataset,
+            'niid': args.niid,
+            'model': args.model,
+            'num_rounds': args.num_rounds,
+            'num_epochs': args.num_epochs,
+            'clients_per_round': args.clients_per_round,
+            'selection': args.selection,
+            'hnm': args.hnm,
+            'learning_rate': args.lr,
+            'batch_size': args.bs,
+            'weight_decay': args.wd,
+            'momentum': args.m
+        }
+    )
+    # metric objects holds aggregated mean/overall/classes accuracies both for training and testing clients
     metrics = set_metrics(args)
     train_clients, test_clients = gen_clients(args, train_datasets, test_datasets, model)
     server = Server(args, train_clients, test_clients, model, metrics)
     server.train()
+    # terminate weights & biases session by sincynchronizing
+    wandb.finish()
 
 
 if __name__ == '__main__':
