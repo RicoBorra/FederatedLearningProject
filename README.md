@@ -7,7 +7,7 @@ This is a set of instructions for getting started with the project.
 First you need to clone the project into whatever directory you prefer.
 
 ```console
-git clone https://github.com/buttaciemanuel/mldl23-fl
+git clone https://github.com/RicoBorra/FederatedLearningProject
 ```
 
 Then, for the following operations, move into the project folder.
@@ -49,25 +49,26 @@ pip install -r requirements.txt
 Create dataset directory
 
 ```console
-mkdir -p data/femnist
+cd data/femnist
 ```
 
-Download zipped file.
+Run the following commands to generate the datasets (and download the necessary files if missing)
 
+To generate the non-iid distribution
 ```console
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1AXJ5uuswGkv9dzVGMAJGRbGViWZFgImE' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1AXJ5uuswGkv9dzVGMAJGRbGViWZFgImE" -O compressed.zip && rm -rf /tmp/cookies.txt
+./preprocess_parquet.sh -s niid --sf 1.0 -k 0 -t sample
 ```
 
-Unzip file and remove zipped dataset.
-
+To generate the iid distribution
 ```console
-unzip compressed.zip -d data/femnist/ 
-rm -rf compressed.zip
+./preprocess_parquet.sh -s iid --sf 1.0 --u 1.0 -k 0 -t sample
 ```
+Note that --u parameter is the correct one (even if official documentation says otherwise) to pass to the script in order to have the same number of clients for the iid case as for the non-iid one.
+
 
 ## Access to Weights & Biases
 
-Execute the following command and insert this API key `0f5f688303bf29bb93b7ec05b9550e3c5efdb7fe`.
+Execute the following command and insert this API key `b578cc4325e4b0652255efe8f2878be1d5fad2f2`.
 
 ```console
 wandb login
