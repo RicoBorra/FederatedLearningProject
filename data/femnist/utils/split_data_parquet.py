@@ -8,6 +8,7 @@ import os
 import random
 import time
 import sys
+import pandas as pd
 
 from collections import OrderedDict
 
@@ -16,52 +17,62 @@ from constants import DATASETS, SEED_FILES
 def create_jsons_for(user_files, which_set, max_users, include_hierarchy):
     """used in split-by-user case"""
     user_count = 0
-    json_index = 0
+    parquet_index = 0
     users = []
-    num_samples = []
-    user_data = {}
+    #num_samples = []
+    #user_data = {}
     prev_dir = None
+
+    data = []
+
     for (i, t) in enumerate(user_files):
-        (u, ns, f) = t
+        # (u, ns, f) = t
+        (u, f) = t
 
         file_dir = os.path.join(subdir, f)
         if prev_dir != file_dir:
-            with open(file_dir, "r") as inf:
-                data = json.load(inf)
+            #with open(file_dir, "r") as inf:
+            #    data = json.load(inf)
+            df = pd.read_parquet(file_dir)
+            # data.append
             prev_dir = file_dir
+        data.append(df[df['user'] == u])
 
-        users.append(u)
-        num_samples.append(ns)
-        user_data[u] = data['user_data'][u]
+        #users.append(u)
+        #num_samples.append(ns)
+        #user_data[u] = data['user_data'][u]
         user_count += 1
+    all_data = pd.concat(data, axis=0)
 
     if (user_count == max_users) or (i == len(user_files) - 1):
 
-        all_data = {}
-        all_data['users'] = users
-        all_data['num_samples'] = num_samples
-        all_data['user_data'] = user_data
+        #all_data = {}
+        #all_data['users'] = users
+        #all_data['num_samples'] = num_samples
+        #all_data['user_data'] = user_data
 
         data_i = f.find('data')
         num_i = data_i + 5
         num_to_end = f[num_i:]
         param_i = num_to_end.find('_')
-        param_to_end = '.json'
+        param_to_end = '.parquet'
         if param_i != -1:
             param_to_end = num_to_end[param_i:]
-        nf = '%s_%d%s' % (f[:(num_i-1)], json_index, param_to_end)
-        file_name = '%s_%s_%s.json' % ((nf[:-5]), which_set, arg_label)
+        nf = '%s_%d%s' % (f[:(num_i-1)], parquet_index, param_to_end)
+        file_name = '%s_%s_%s.parquet' % ((nf[:-5]), which_set, arg_label)
         ouf_dir = os.path.join(dir, which_set, file_name)
 
         print('writing %s' % file_name)
-        with open(ouf_dir, 'w') as outfile:
-            json.dump(all_data, outfile)
+        #with open(ouf_dir, 'w') as outfile:
+        #    json.dump(all_data, outfile)
+        all_data.to_parquet(ouf_dir, index=False)
 
         user_count = 0
-        json_index += 1
-        users = []
-        num_samples = []
-        user_data = {}
+        parquet_index += 1
+        #users = []
+        data = []
+        #num_samples = []
+        #user_data = {}
 
 parser = argparse.ArgumentParser()
 
@@ -122,11 +133,13 @@ else:
 arg_label = str(args.frac)
 arg_label = arg_label[2:]
 
+# TODO: support hierarchies
 # check if data contains information on hierarchies
-file_dir = os.path.join(subdir, files[0])
-with open(file_dir, 'r') as inf:
-    data = json.load(inf)
-include_hierarchy = 'hierarchies' in data
+#file_dir = os.path.join(subdir, files[0])
+#with open(file_dir, 'r') as inf:
+#    data = json.load(inf)
+#include_hierarchy = 'hierarchies' in data
+include_hierarchy = False
 
 if (args.user):
     print('splitting data by user')
@@ -136,12 +149,14 @@ if (args.user):
     user_files = []
     for f in files:
         file_dir = os.path.join(subdir, f)
-        with open(file_dir, 'r') as inf:
+        #with open(file_dir, 'r') as inf:
             # Load data into an OrderedDict, to prevent ordering changes
             # and enable reproducibility
-            data = json.load(inf, object_pairs_hook=OrderedDict)
-            user_files.extend([(u, ns, f) for (u, ns) in
-                zip(data['users'], data['num_samples'])])
+        #    data = json.load(inf, object_pairs_hook=OrderedDict)
+        #    user_files.extend([(u, ns, f) for (u, ns) in
+        #        zip(data['users'], data['num_samples'])])
+        data = pd.read_parquet(file_dir)
+        user_files.extend([(u, f) for u in data['user'].unique()])
 
     # randomly sample from user_files to pick training set users
     num_users = len(user_files)
