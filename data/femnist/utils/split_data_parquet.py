@@ -204,7 +204,7 @@ else:
         for i, u in enumerate(users):
 
             data_of_user = data[data['user'] == u]
-            curr_num_samples = len()
+            curr_num_samples = len(data_of_user)
             if curr_num_samples >= 2:
                 # ensures number of train and test samples both >= 1
                 num_train_samples = max(1, int(args.frac * curr_num_samples))
@@ -263,8 +263,8 @@ else:
         #all_data_test['user_data'] = user_data_test
         all_data_test = pd.concat(user_data_test, axis=0)
 
-        file_name_train = '%s_train_%s.parquet' % ((f[:-5]), arg_label)
-        file_name_test = '%s_test_%s.parquet' % ((f[:-5]), arg_label)
+        file_name_train = '%s_train_%s.parquet' % ((f[:-8]), arg_label)
+        file_name_test = '%s_test_%s.parquet' % ((f[:-8]), arg_label)
         ouf_dir_train = os.path.join(dir, 'train', file_name_train)
         ouf_dir_test = os.path.join(dir, 'test', file_name_test)
         print('writing %s' % file_name_train)

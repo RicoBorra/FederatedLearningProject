@@ -79,7 +79,7 @@ for (w, l) in writers:
 
         filename = f'all_data_{parquet_index}.parquet'
         print(f"writing {filename}")
-        path = os.path.join(parent_path, 'data', 'prova_parquet', filename)
+        path = os.path.join(parent_path, 'data', 'all_data', filename)
         df.reset_index().to_parquet(path=path, index=False)
 
         writer_count = 0
@@ -89,4 +89,3 @@ for (w, l) in writers:
         rows = []
 
 print("Done")
-

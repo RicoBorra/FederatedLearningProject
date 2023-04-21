@@ -190,9 +190,9 @@ for f in files:
     #    all_data['hierarchies'] = hierarchies
     #all_data['num_samples'] = num_samples
     #all_data['user_data'] = user_data
-    for user in users:
-        user_data[user] = pd.concat([len(user_data[user])*user,user_data[user]], axis=1)
-    all_data = pd.concat(user_data, axis=0)
+    #for user in users:
+    #    user_data[user] = pd.concat([pd.Series(len(user_data[user])*user, name='user'),user_data[user]], axis=1)
+    all_data = pd.concat(user_data.values(), axis=0)
 
     slabel = ''
     if(args.iid):
@@ -207,7 +207,7 @@ for f in files:
     arg_label = arg_frac
     if(args.iid):
         arg_label = '%s_%s' % (arg_nu, arg_label)
-    file_name = '%s_%s_%s.parquet' % ((f[:-5]), slabel, arg_label)
+    file_name = '%s_%s_%s.parquet' % ((f[:-8]), slabel, arg_label)
     ouf_dir = os.path.join(data_dir, 'sampled_data', file_name)
 
     print('writing %s' % file_name)

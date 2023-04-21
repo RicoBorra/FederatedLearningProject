@@ -65,7 +65,7 @@ for f in files:
             #    hierarchies.append(curr_hierarchy)
     #        num_samples.append(data['num_samples'][i])
     
-    grouped_users_above = data.value_counts(subset=['user']) >= argparse.min_samples # true for users above threshold
+    grouped_users_above = data.value_counts(subset=['user']) >= args.min_samples # true for users above threshold
     users = grouped_users_above[grouped_users_above.values].reset_index('user')['user'] # selects only users above threshold
     all_data = data[data['user'].isin(users)]
 
@@ -76,7 +76,7 @@ for f in files:
     #all_data['num_samples'] = num_samples
     #all_data['user_data'] = user_data
 
-    file_name = '%s_keep_%d.parquet' % ((f[:-5]), args.min_samples)
+    file_name = '%s_keep_%d.parquet' % ((f[:-8]), args.min_samples)
     ouf_dir = os.path.join(dir, 'rem_user_data', file_name)
 
     print('writing %s' % file_name)
