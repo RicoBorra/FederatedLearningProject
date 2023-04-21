@@ -86,37 +86,23 @@ for f in files:
     hierarchies = None
 
     if(args.iid):
-        #raw_list = list(data['user_data'].values())
-        #raw_x = [elem['x'] for elem in raw_list]
-        #raw_y = [elem['y'] for elem in raw_list]
-        #x_list = [item for sublist in raw_x for item in sublist] # flatten raw_x
-        #y_list = [item for sublist in raw_y for item in sublist] # flatten raw_y
 
         num_new_users = int(round(args.u * num_users))
         if num_new_users == 0:
             num_new_users += 1
 
-        #indices = [i for i in range(tot_num_samples)]
         indices = range(tot_num_samples)
         new_indices = rng.sample(indices, num_new_samples)
         users = [str(i+new_user_count) for i in range(num_new_users)]
 
         user_data = {}
-        #for user in users:
-        #    user_data[user] = {'x': [], 'y': []}
-        #all_x_samples = [x_list[i] for i in new_indices]
-        #all_y_samples = [y_list[i] for i in new_indices]
-        sampled_data = data.drop(columns=['user'])[new_indices]
+        data_no_user = data.drop(columns=['user'])
+        sampled_data = data_no_user.iloc[new_indices]
         sample_groups = iid_divide(sampled_data, num_new_users)
-        #x_groups = iid_divide(all_x_samples, num_new_users)
-        #y_groups = iid_divide(all_y_samples, num_new_users)
-        for i in range(num_new_users):
-            user_data[users[i]] = sample_groups[i]
-        #    user_data[users[i]]['x'] = x_groups[i]
-        #    user_data[users[i]]['y'] = y_groups[i]
         
-        num_samples = [len(user_data[u]) for u in users]
-
+        for i in range(num_new_users):
+            user_data[users[i]] = pd.concat([pd.Series(([users[i]]*len(sample_groups[i])), name='user'), sample_groups[i]], axis=1)
+        
         new_user_count += num_new_users
 
     else:
@@ -124,74 +110,35 @@ for f in files:
         ctot_num_samples = 0
 
         users = data['user'].unique()
-        #users_and_hiers = None
-        #if 'hierarchies' in data:
-        #    users_and_hiers = list(zip(users, data['hierarchies']))
-        #    rng.shuffle(users_and_hiers)
-        #else:
-        #    rng.shuffle(users)
         rng.shuffle(users)
         user_i = 0
         num_samples = []
         user_data = {}
 
-        #if 'hierarchies' in data:
-        #    hierarchies = []
-
         while(ctot_num_samples < num_new_samples):
             hierarchy = None
-            #if users_and_hiers is not None:
-            #    user, hier = users_and_hiers[user_i]
-            #else:
-            #    user = users[user_i]
             user = users[user_i]
 
-            #cdata = data['user_data'][user]
             cdata = data[data['user'] == user]
-
-            #cnum_samples = len(data['user_data'][user]['y'])
             cnum_samples = len(cdata)
 
 
             if (ctot_num_samples + cnum_samples > num_new_samples):
                 cnum_samples = num_new_samples - ctot_num_samples
-                #indices = [i for i in range(cnum_samples)]
                 indices = range(cnum_samples)
                 new_indices = rng.sample(indices, cnum_samples)
-                #x = []
-                #y = []
-                #for i in new_indices:
-                #    x.append(data['user_data'][user]['x'][i])
-                #    y.append(data['user_data'][user]['y'][i])
-                #cdata = {'x': x, 'y': y}
                 cdata = cdata[new_indices]
             
-            #if 'hierarchies' in data:
-            #    hierarchies.append(hier)
-
-            num_samples.append(cnum_samples)
             user_data[user] = cdata
 
             ctot_num_samples += cnum_samples
             user_i += 1
 
-        #if 'hierarchies' in data:
-        #    users = [u for u, h in users_and_hiers][:user_i]
-        #else:
-        #    users = users[:user_i]
         users = users[:user_i]
-
+    
     # ------------
     # create .parquet file
 
-    #all_data = {}
-    #all_data['users'] = users
-    #if hierarchies is not None:
-    #    all_data['hierarchies'] = hierarchies
-    #all_data['num_samples'] = num_samples
-    #all_data['user_data'] = user_data
-    #for user in users:
-    #    user_data[user] = pd.concat([pd.Series(len(user_data[user])*user, name='user'),user_data[user]], axis=1)
     all_data = pd.concat(user_data.values(), axis=0)
 
     slabel = ''
@@ -211,6 +158,4 @@ for f in files:
     ouf_dir = os.path.join(data_dir, 'sampled_data', file_name)
 
     print('writing %s' % file_name)
-    #with open(ouf_dir, 'w') as outfile:
-    #    json.dump(all_data, outfile)
     all_data.to_parquet(ouf_dir, index=False)

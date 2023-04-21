@@ -18,38 +18,23 @@ def create_jsons_for(user_files, which_set, max_users, include_hierarchy):
     """used in split-by-user case"""
     user_count = 0
     parquet_index = 0
-    #users = []
-    #num_samples = []
-    #user_data = {}
     prev_dir = None
 
     data = []
 
     for (i, t) in enumerate(user_files):
-        # (u, ns, f) = t
         (u, f) = t
 
         file_dir = os.path.join(subdir, f)
         if prev_dir != file_dir:
-            #with open(file_dir, "r") as inf:
-            #    data = json.load(inf)
             df = pd.read_parquet(file_dir)
-            # data.append
             prev_dir = file_dir
         data.append(df[df['user'] == u])
 
-        #users.append(u)
-        #num_samples.append(ns)
-        #user_data[u] = data['user_data'][u]
         user_count += 1
     all_data = pd.concat(data, axis=0)
 
     if (user_count == max_users) or (i == len(user_files) - 1):
-
-        #all_data = {}
-        #all_data['users'] = users
-        #all_data['num_samples'] = num_samples
-        #all_data['user_data'] = user_data
 
         data_i = f.find('data')
         num_i = data_i + 5
@@ -63,16 +48,11 @@ def create_jsons_for(user_files, which_set, max_users, include_hierarchy):
         ouf_dir = os.path.join(dir, which_set, file_name)
 
         print('writing %s' % file_name)
-        #with open(ouf_dir, 'w') as outfile:
-        #    json.dump(all_data, outfile)
         all_data.to_parquet(ouf_dir, index=False)
 
         user_count = 0
         parquet_index += 1
-        #users = []
         data = []
-        #num_samples = []
-        #user_data = {}
 
 parser = argparse.ArgumentParser()
 
@@ -135,33 +115,22 @@ arg_label = arg_label[2:]
 
 # TODO: support hierarchies
 # check if data contains information on hierarchies
-#file_dir = os.path.join(subdir, files[0])
-#with open(file_dir, 'r') as inf:
-#    data = json.load(inf)
-#include_hierarchy = 'hierarchies' in data
 include_hierarchy = False
 
 if (args.user):
     print('splitting data by user')
 
-    # 1 pass through all the json files to instantiate arr
-    # containing all possible (user, .json file name) tuples
+    # 1 pass through all the parquet files to instantiate arr
+    # containing all possible (user, .parquet file name) tuples
     user_files = []
     for f in files:
         file_dir = os.path.join(subdir, f)
-        #with open(file_dir, 'r') as inf:
-            # Load data into an OrderedDict, to prevent ordering changes
-            # and enable reproducibility
-        #    data = json.load(inf, object_pairs_hook=OrderedDict)
-        #    user_files.extend([(u, ns, f) for (u, ns) in
-        #        zip(data['users'], data['num_samples'])])
         data = pd.read_parquet(file_dir)
         user_files.extend([(u, f) for u in data['user'].unique()])
 
     # randomly sample from user_files to pick training set users
     num_users = len(user_files)
     num_train_users = int(args.frac * num_users)
-    #indices = [i for i in range(num_users)]
     indices = range(num_users)
     train_indices = rng.sample(indices, num_train_users)
     train_blist = [False for i in range(num_users)]  # FIXME 
@@ -186,17 +155,10 @@ else:
 
     for f in files:
         file_dir = os.path.join(subdir, f)
-        #with open(file_dir, 'r') as inf:
-            # Load data into an OrderedDict, to prevent ordering changes
-            # and enable reproducibility
-        #    data = json.load(inf, object_pairs_hook=OrderedDict)
         data = pd.read_parquet(file_dir)
 
-        #num_samples_train = []
         user_data_train = []
-        #num_samples_test = []
         user_data_test = []
-
         user_indices = [] # indices of users in data['users'] that are not deleted
 
         removed = 0
@@ -213,12 +175,9 @@ else:
 
                 num_test_samples = curr_num_samples - num_train_samples
 
-                #indices = [j for j in range(curr_num_samples)]
                 indices = range(curr_num_samples)
                 if args.name in ['shakespeare']:
-                    #train_indices = [i for i in range(num_train_samples)]
                     train_indices = range(num_train_samples)
-                    #test_indices = [i for i in range(num_train_samples + 80 - 1, curr_num_samples)]
                     test_indices = range(num_train_samples + 80 - 1, curr_num_samples)
                 else:
                     train_indices = rng.sample(indices, num_train_samples)
@@ -226,10 +185,6 @@ else:
 
                 if len(train_indices) >= 1 and len(test_indices) >= 1:
                     user_indices.append(i)
-                    #num_samples_train.append(num_train_samples)
-                    #num_samples_test.append(num_test_samples)
-                    #user_data_train[u] = {'x': [], 'y': []}
-                    #user_data_test[u] = {'x': [], 'y': []}
 
                     train_blist = [False for _ in range(curr_num_samples)]
                     test_blist = [False for _ in range(curr_num_samples)]
@@ -239,28 +194,10 @@ else:
                     for j in test_indices:
                         test_blist[j] = True
 
-                    #for j in range(curr_num_samples):
-                    #    if (train_blist[j]):
-                    #        user_data_train[u]['x'].append(data['user_data'][u]['x'][j])
-                    #        user_data_train[u]['y'].append(data['user_data'][u]['y'][j])
-                    #    elif (test_blist[j]):
-                    #        user_data_test[u]['x'].append(data['user_data'][u]['x'][j])
-                    #        user_data_test[u]['y'].append(data['user_data'][u]['y'][j])
                     user_data_train.append(data_of_user[train_blist])
                     user_data_test.append(data_of_user[test_blist])
 
-        #users = [data['users'][i] for i in user_indices]
-
-        #all_data_train = {}
-        #all_data_train['users'] = users
-        #all_data_train['num_samples'] = num_samples_train
-        #all_data_train['user_data'] = user_data_train
         all_data_train = pd.concat(user_data_train, axis=0)
-
-        #all_data_test = {}
-        #all_data_test['users'] = users
-        #all_data_test['num_samples'] = num_samples_test
-        #all_data_test['user_data'] = user_data_test
         all_data_test = pd.concat(user_data_test, axis=0)
 
         file_name_train = '%s_train_%s.parquet' % ((f[:-8]), arg_label)
@@ -268,11 +205,7 @@ else:
         ouf_dir_train = os.path.join(dir, 'train', file_name_train)
         ouf_dir_test = os.path.join(dir, 'test', file_name_test)
         print('writing %s' % file_name_train)
-        #with open(ouf_dir_train, 'w') as outfile:
-        #    json.dump(all_data_train, outfile)
         all_data_train.to_parquet(ouf_dir_train, index=False)
         print('writing %s' % file_name_test)
-        #with open(ouf_dir_test, 'w') as outfile:
-        #    json.dump(all_data_test, outfile)
         all_data_test.to_parquet(ouf_dir_test, index=False)
 

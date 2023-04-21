@@ -48,10 +48,6 @@ parquet_index = 0
 
 for (w, l) in writers:
 
-    #users.append(w)
-    #num_samples.append(len(l))
-    #user_data[w] = {'x': [], 'y': []}
-
     size = 28, 28  # original image size is 128, 128
     
     for (f, c) in l:
