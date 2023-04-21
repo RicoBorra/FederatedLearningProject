@@ -18,7 +18,7 @@ def create_jsons_for(user_files, which_set, max_users, include_hierarchy):
     """used in split-by-user case"""
     user_count = 0
     parquet_index = 0
-    users = []
+    #users = []
     #num_samples = []
     #user_data = {}
     prev_dir = None
@@ -161,9 +161,10 @@ if (args.user):
     # randomly sample from user_files to pick training set users
     num_users = len(user_files)
     num_train_users = int(args.frac * num_users)
-    indices = [i for i in range(num_users)]
+    #indices = [i for i in range(num_users)]
+    indices = range(num_users)
     train_indices = rng.sample(indices, num_train_users)
-    train_blist = [False for i in range(num_users)]
+    train_blist = [False for i in range(num_users)]  # FIXME 
     for i in train_indices:
         train_blist[i] = True
     train_user_files = []
@@ -185,22 +186,25 @@ else:
 
     for f in files:
         file_dir = os.path.join(subdir, f)
-        with open(file_dir, 'r') as inf:
+        #with open(file_dir, 'r') as inf:
             # Load data into an OrderedDict, to prevent ordering changes
             # and enable reproducibility
-            data = json.load(inf, object_pairs_hook=OrderedDict)
+        #    data = json.load(inf, object_pairs_hook=OrderedDict)
+        data = pd.read_parquet(file_dir)
 
-        num_samples_train = []
-        user_data_train = {}
-        num_samples_test = []
-        user_data_test = {}
+        #num_samples_train = []
+        user_data_train = []
+        #num_samples_test = []
+        user_data_test = []
 
         user_indices = [] # indices of users in data['users'] that are not deleted
 
         removed = 0
-        for i, u in enumerate(data['users']):
+        users = data['user'].unique()
+        for i, u in enumerate(users):
 
-            curr_num_samples = len(data['user_data'][u]['y'])
+            data_of_user = data[data['user'] == u]
+            curr_num_samples = len()
             if curr_num_samples >= 2:
                 # ensures number of train and test samples both >= 1
                 num_train_samples = max(1, int(args.frac * curr_num_samples))
@@ -209,20 +213,23 @@ else:
 
                 num_test_samples = curr_num_samples - num_train_samples
 
-                indices = [j for j in range(curr_num_samples)]
+                #indices = [j for j in range(curr_num_samples)]
+                indices = range(curr_num_samples)
                 if args.name in ['shakespeare']:
-                    train_indices = [i for i in range(num_train_samples)]
-                    test_indices = [i for i in range(num_train_samples + 80 - 1, curr_num_samples)]
+                    #train_indices = [i for i in range(num_train_samples)]
+                    train_indices = range(num_train_samples)
+                    #test_indices = [i for i in range(num_train_samples + 80 - 1, curr_num_samples)]
+                    test_indices = range(num_train_samples + 80 - 1, curr_num_samples)
                 else:
                     train_indices = rng.sample(indices, num_train_samples)
                     test_indices = [i for i in range(curr_num_samples) if i not in train_indices]
 
                 if len(train_indices) >= 1 and len(test_indices) >= 1:
                     user_indices.append(i)
-                    num_samples_train.append(num_train_samples)
-                    num_samples_test.append(num_test_samples)
-                    user_data_train[u] = {'x': [], 'y': []}
-                    user_data_test[u] = {'x': [], 'y': []}
+                    #num_samples_train.append(num_train_samples)
+                    #num_samples_test.append(num_test_samples)
+                    #user_data_train[u] = {'x': [], 'y': []}
+                    #user_data_test[u] = {'x': [], 'y': []}
 
                     train_blist = [False for _ in range(curr_num_samples)]
                     test_blist = [False for _ in range(curr_num_samples)]
@@ -232,32 +239,40 @@ else:
                     for j in test_indices:
                         test_blist[j] = True
 
-                    for j in range(curr_num_samples):
-                        if (train_blist[j]):
-                            user_data_train[u]['x'].append(data['user_data'][u]['x'][j])
-                            user_data_train[u]['y'].append(data['user_data'][u]['y'][j])
-                        elif (test_blist[j]):
-                            user_data_test[u]['x'].append(data['user_data'][u]['x'][j])
-                            user_data_test[u]['y'].append(data['user_data'][u]['y'][j])
+                    #for j in range(curr_num_samples):
+                    #    if (train_blist[j]):
+                    #        user_data_train[u]['x'].append(data['user_data'][u]['x'][j])
+                    #        user_data_train[u]['y'].append(data['user_data'][u]['y'][j])
+                    #    elif (test_blist[j]):
+                    #        user_data_test[u]['x'].append(data['user_data'][u]['x'][j])
+                    #        user_data_test[u]['y'].append(data['user_data'][u]['y'][j])
+                    user_data_train.append(data_of_user[train_blist])
+                    user_data_test.append(data_of_user[test_blist])
 
-        users = [data['users'][i] for i in user_indices]
+        #users = [data['users'][i] for i in user_indices]
 
-        all_data_train = {}
-        all_data_train['users'] = users
-        all_data_train['num_samples'] = num_samples_train
-        all_data_train['user_data'] = user_data_train
+        #all_data_train = {}
+        #all_data_train['users'] = users
+        #all_data_train['num_samples'] = num_samples_train
+        #all_data_train['user_data'] = user_data_train
+        all_data_train = pd.concat(user_data_train, axis=0)
 
-        all_data_test = {}
-        all_data_test['users'] = users
-        all_data_test['num_samples'] = num_samples_test
-        all_data_test['user_data'] = user_data_test
-        file_name_train = '%s_train_%s.json' % ((f[:-5]), arg_label)
-        file_name_test = '%s_test_%s.json' % ((f[:-5]), arg_label)
+        #all_data_test = {}
+        #all_data_test['users'] = users
+        #all_data_test['num_samples'] = num_samples_test
+        #all_data_test['user_data'] = user_data_test
+        all_data_test = pd.concat(user_data_test, axis=0)
+
+        file_name_train = '%s_train_%s.parquet' % ((f[:-5]), arg_label)
+        file_name_test = '%s_test_%s.parquet' % ((f[:-5]), arg_label)
         ouf_dir_train = os.path.join(dir, 'train', file_name_train)
         ouf_dir_test = os.path.join(dir, 'test', file_name_test)
         print('writing %s' % file_name_train)
-        with open(ouf_dir_train, 'w') as outfile:
-            json.dump(all_data_train, outfile)
+        #with open(ouf_dir_train, 'w') as outfile:
+        #    json.dump(all_data_train, outfile)
+        all_data_train.to_parquet(ouf_dir_train, index=False)
         print('writing %s' % file_name_test)
-        with open(ouf_dir_test, 'w') as outfile:
-            json.dump(all_data_test, outfile)
+        #with open(ouf_dir_test, 'w') as outfile:
+        #    json.dump(all_data_test, outfile)
+        all_data_test.to_parquet(ouf_dir_test, index=False)
+
