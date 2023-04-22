@@ -48,7 +48,7 @@ for f in files:
     file_dir = os.path.join(subdir, f)
     data = pd.read_parquet(file_dir)
 
-    grouped_users_above = data.value_counts(subset=['user']) >= args.min_samples # true for users above threshold
+    grouped_users_above = data.value_counts(subset=['user'], sort=False) >= args.min_samples # true for users above threshold
     users = grouped_users_above[grouped_users_above.values].reset_index('user')['user'] # selects only users above threshold
     all_data = data[data['user'].isin(users)]
 
