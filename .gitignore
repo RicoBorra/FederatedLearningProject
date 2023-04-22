@@ -1,4 +1,5 @@
 data/femnist/data
+data/femnist/meta
 **/__pycache__
 env
 
