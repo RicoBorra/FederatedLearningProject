@@ -36,7 +36,7 @@ def load_data(name):
     subdir = os.path.join(data_dir, 'all_data')
 
     files = os.listdir(subdir)
-    files = [f for f in files if f.endswith('.json')]
+    files = [f for f in files if f.endswith('.parquet')]
 
     num_classes = []
 
