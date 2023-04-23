@@ -61,9 +61,8 @@ To generate the non-iid distribution
 
 To generate the iid distribution
 ```console
-./preprocess_parquet.sh -s iid --sf 1.0 --u 1.0 -k 0 -t sample
+./preprocess_parquet.sh -s iid --sf 1.0 --iu 1.0 -k 0 -t sample
 ```
-Note that --u parameter is the correct one (even if official documentation says otherwise) to pass to the script in order to have the same number of clients for the iid case as for the non-iid one.
 
 
 ## Access to Weights & Biases

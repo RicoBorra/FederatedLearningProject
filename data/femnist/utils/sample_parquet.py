@@ -101,7 +101,7 @@ for f in files:
         sample_groups = iid_divide(sampled_data, num_new_users)
         
         for i in range(num_new_users):
-            user_data[users[i]] = pd.concat([pd.Series(([users[i]]*len(sample_groups[i])), name='user'), sample_groups[i]], axis=1)
+            user_data[users[i]] = pd.concat([pd.Series(([users[i]]*len(sample_groups[i])), name='user'), sample_groups[i].reset_index()], axis=1)
         
         new_user_count += num_new_users
 
