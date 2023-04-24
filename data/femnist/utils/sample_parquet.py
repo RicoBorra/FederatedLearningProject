@@ -38,9 +38,9 @@ parser.add_argument('--fraction',
 parser.add_argument('--u',
                 help=('number of users in iid data set; ignored in niid case;'
                       'represented as fraction of original total number of users; '
-                      'default: 0.01;'),
+                      'default: 1.0;'),
                 type=float,
-                default=0.01)
+                default=1.0)
 parser.add_argument('--seed',
                 help='seed for random sampling of data',
                 type=int,
@@ -98,10 +98,12 @@ for f in files:
         user_data = {}
         data_no_user = data.drop(columns=['user'])
         sampled_data = data_no_user.iloc[new_indices]
+
         sample_groups = iid_divide(sampled_data, num_new_users)
         
         for i in range(num_new_users):
-            user_data[users[i]] = pd.concat([pd.Series(([users[i]]*len(sample_groups[i])), name='user'), sample_groups[i].reset_index()], axis=1)
+            user_data[users[i]] = pd.DataFrame(sample_groups[i])
+            user_data[users[i]]['user'] = users[i]
         
         new_user_count += num_new_users
 

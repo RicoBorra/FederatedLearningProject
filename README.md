@@ -13,7 +13,7 @@ git clone https://github.com/RicoBorra/FederatedLearningProject
 Then, for the following operations, move into the project folder.
 
 ```console
-cd mldl23-fl
+cd FederatedLearningProject
 ```
 
 ## Environment creation
@@ -61,16 +61,21 @@ To generate the non-iid distribution
 
 To generate the iid distribution
 ```console
-./preprocess_parquet.sh -s iid --sf 1.0 --iu 1.0 -k 0 -t sample
+./preprocess_parquet.sh -s iid --sf 1.0 -k 0 -t sample
 ```
 
+Go back to parent directory of the project
+
+```console
+cd -
+```
 
 ## Access to Weights & Biases
 
-Execute the following command and insert this API key `b578cc4325e4b0652255efe8f2878be1d5fad2f2`.
+Execute the following command to login with API key `b578cc4325e4b0652255efe8f2878be1d5fad2f2`.
 
 ```console
-wandb login
+wandb login b578cc4325e4b0652255efe8f2878be1d5fad2f2
 ```
 
 This will provide automatic access and log to the Weights & Biases platform for model and experiments tracking.

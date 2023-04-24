@@ -1,5 +1,6 @@
 data/femnist/data
 data/femnist/meta
+data/femnist/compressed
 **/__pycache__
 env
-
+wandb

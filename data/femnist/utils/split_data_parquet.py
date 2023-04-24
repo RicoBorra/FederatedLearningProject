@@ -14,7 +14,7 @@ from collections import OrderedDict
 
 from constants import DATASETS, SEED_FILES
 
-def create_jsons_for(user_files, which_set, max_users, include_hierarchy):
+def create_parquet_for(user_files, which_set, max_users, include_hierarchy):
     """used in split-by-user case"""
     user_count = 0
     parquet_index = 0
@@ -147,8 +147,8 @@ if (args.user):
     max_users = sys.maxsize
     if args.name == 'femnist':
         max_users = 50 # max number of users per json file
-    create_jsons_for(train_user_files, 'train', max_users, include_hierarchy)
-    create_jsons_for(test_user_files, 'test', max_users, include_hierarchy)
+    create_parquet_for(train_user_files, 'train', max_users, include_hierarchy)
+    create_parquet_for(test_user_files, 'test', max_users, include_hierarchy)
 
 else:
     print('splitting data by sample')

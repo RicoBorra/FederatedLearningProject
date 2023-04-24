@@ -30,3 +30,8 @@ mv test/* ${SAMPLING}/test
 mv train/* ${SAMPLING}/train
 rm -rf train
 rm -rf test
+
+# merge all parquet files in two single 'training.parquet' and 'testing.parquet' output files
+cd ..
+python3 utils/merge_parquet.py data/${SAMPLING}/train/ --output compressed/${SAMPLING}/training.parquet
+python3 utils/merge_parquet.py data/${SAMPLING}/test/ --output compressed/${SAMPLING}/testing.parquet

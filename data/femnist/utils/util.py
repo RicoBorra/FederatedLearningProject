@@ -1,4 +1,5 @@
 import pickle
+import math
 
 
 def save_obj(obj, name):
@@ -18,7 +19,7 @@ def iid_divide(l, g):
     returns a list of groups
     '''
     num_elems = len(l)
-    group_size = int(len(l)/g)
+    group_size = int(math.floor(len(l)/g))
     num_big_groups = num_elems - g * group_size
     num_small_groups = g - num_big_groups
     glist = []
