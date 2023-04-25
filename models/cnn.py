@@ -52,20 +52,20 @@ class Network(nn.Module):
         # convolutional neural network architecture
         self.architecture = nn.Sequential(
             # first convolutional block of 32 channels, max pooling and relu
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5),
-            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(in_channels = 1, out_channels = 32, kernel_size = (5, 5), padding = 'same'),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = 2),
             nn.ReLU(),
             # second convolutional block of 64 channels, max pooling and relu
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=5),
-            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(in_channels = 32, out_channels = 64, kernel_size = (5, 5), padding = 'same'),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = 2),
             nn.ReLU(),
             # transform the two dimensional activation maps into one flatten array
             nn.Flatten(),
             # first fully connected layer of 2048 outputs
-            nn.Linear(in_features=1024, out_features=2048),
+            nn.Linear(in_features = 7 * 7 * 64, out_features = 2048),
             nn.ReLU(),
             # second and last fully connected layer
-            nn.Linear(in_features=2048, out_features=n_classes)
+            nn.Linear(in_features = 2048, out_features = n_classes)
         )
         # optimizer configuration
         self.optimizer = optim.SGD(

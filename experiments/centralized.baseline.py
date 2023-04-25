@@ -143,6 +143,7 @@ if __name__ == '__main__':
     # log
     wandb.init(
         project='federated_learning',
+        name=f'EMNIST_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}',
         config={
             'seed': args.seed,
             'dataset': 'emnist',
