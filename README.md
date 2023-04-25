@@ -48,7 +48,7 @@ pip install -r requirements.txt
 
 There are two ways for importing the dataset.
 
-### A. Construct the dataset from scratch (not determistic in IID)
+### A. Construct the dataset from scratch (not deterministic in IID)
 
 Create dataset directory
 
@@ -74,7 +74,7 @@ Go back to parent directory of the project
 cd -
 ```
 
-### B. Use the construct dataset (determistic for unique usage)
+### B. Use the constructed dataset (deterministic for shared usage)
 
 Download zipped file.
 
