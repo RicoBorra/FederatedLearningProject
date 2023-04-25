@@ -46,6 +46,10 @@ pip install -r requirements.txt
 
 ## Download the dataset
 
+There are two ways for importing the dataset.
+
+### A. Construct the dataset from scratch (not determistic in IID)
+
 Create dataset directory
 
 ```console
@@ -68,6 +72,21 @@ Go back to parent directory of the project
 
 ```console
 cd -
+```
+
+### B. Use the construct dataset (determistic for unique usage)
+
+Download zipped file.
+
+```console
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1AXJ5uuswGkv9dzVGMAJGRbGViWZFgImE' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1AXJ5uuswGkv9dzVGMAJGRbGViWZFgImE" -O compressed.zip && rm -rf /tmp/cookies.txt
+```
+
+Unzip file and remove zipped dataset.
+
+```console
+unzip compressed.zip -d data/femnist/ 
+rm -rf compressed.zip
 ```
 
 ## Access to Weights & Biases

@@ -1,6 +1,7 @@
 data/femnist/data
 data/femnist/meta
 data/femnist/compressed
+data/emnist/*
 **/__pycache__
 env
 wandb
