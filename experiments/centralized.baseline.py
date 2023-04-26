@@ -14,6 +14,8 @@ import wandb
 # relative import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from datasets import ss_transforms as sstr
+from datasets import np_transforms as nptr
 from models import cnn
 
 
@@ -41,11 +43,11 @@ def get_arguments():
 def load_emnist(batch_size: int):
     return (
         DataLoader(
-            datasets.EMNIST(root = 'data/emnist', train = True, download = True, split = 'byclass', transform = transforms.ToTensor()),
+            datasets.EMNIST(root = 'data/emnist', train = True, download = True, split = 'byclass', transform = transforms.Compose([ transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)) ])),
             batch_size = batch_size
         ),
         DataLoader(
-            datasets.EMNIST(root = 'data/emnist', train = False, download = True, split = 'byclass', transform = transforms.ToTensor()),
+            datasets.EMNIST(root = 'data/emnist', train = False, download = True, split = 'byclass', transform = transforms.Compose([ transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)) ])),
             batch_size = batch_size
         )
     )
@@ -89,7 +91,7 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
     wandb.define_metric('accuracy/testing', step_metric = 'epoch')
     # compile if possible
     # if hasattr(torch, 'compile'):
-    #    model = torch.compile(model)
+    #     model = torch.compile(model)
     print(f'[+] running on device \'{device}\'')
     # epochs of training
     for epoch in range(epochs):
