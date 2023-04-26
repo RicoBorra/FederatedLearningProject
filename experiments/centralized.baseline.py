@@ -14,8 +14,6 @@ import wandb
 # relative import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datasets import ss_transforms as sstr
-from datasets import np_transforms as nptr
 from models import cnn
 
 
