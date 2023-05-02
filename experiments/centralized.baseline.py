@@ -35,6 +35,8 @@ def get_arguments():
     parser.add_argument('--bs', type=int, default=512, help='batch size')
     parser.add_argument('--wd', type=float, default=0, help='weight decay')
     parser.add_argument('--m', type=float, default=0.9, help='momentum')
+    parser.add_argument('--lrd', type=float, default=1.0, help='learning rate decay factor (multiplicative)')
+    parser.add_argument('--lrp', type=int, default=5, help='learning rate decay period (epochs count)')
     return parser.parse_args()
 
 
@@ -51,8 +53,15 @@ def load_emnist(batch_size: int):
     )
 
 
-def load_model(learning_rate: float, weight_decay: float, momentum: float):
-    return cnn.Network(n_classes = 62, learning_rate = learning_rate, momentum = momentum, weight_decay = weight_decay)
+def load_model(learning_rate: float, weight_decay: float, momentum: float, learning_rate_decay: float, learning_rate_decay_period: int):
+    return cnn.Network(
+        n_classes = 62, 
+        learning_rate = learning_rate, 
+        momentum = momentum, 
+        weight_decay = weight_decay, 
+        learning_rate_decay = learning_rate_decay, 
+        learning_rate_decay_period = learning_rate_decay_period
+    )
 
 
 def training(model: cnn.Network, X: torch.Tensor, y: torch.Tensor) -> tuple[float, float]:
@@ -113,6 +122,8 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
                 validation_batch_loss, validation_batch_score = validation(model, X.to(device), y.to(device))
                 validation_loss, validation_score = validation_loss + validation_batch_loss, validation_score + validation_batch_score
                 validation_progress.update(1)
+        # execute scheduler for learning rate
+        model.scheduler.step()
         # stop progress bars
         training_progress.close()
         validation_progress.close()
@@ -139,17 +150,19 @@ if __name__ == '__main__':
     # data loaders
     training_loader, validation_loader = load_emnist(batch_size = args.bs)
     # load model
-    model = load_model(learning_rate = args.lr, weight_decay = args.wd, momentum = args.m)
+    model = load_model(learning_rate = args.lr, weight_decay = args.wd, momentum = args.m, learning_rate_decay = args.lrd, learning_rate_decay_period = args.lrp)
     # log
     wandb.init(
         project='federated_learning',
-        name=f'EMNIST_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}',
+        name=f'EMNIST_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRD{args.lrd}_LRP{args.lrp}',
         config={
             'seed': args.seed,
             'dataset': 'emnist',
             'model': 'cnn',
             'num_epochs': args.num_epochs,
             'learning_rate': args.lr,
+            'learning_rate_decay': None if args.lrd == 1.0 else args.lrd,
+            'learning_rate_decay_period': None if args.lrd == 1.0 else args.lrp,
             'batch_size': args.bs,
             'weight_decay': args.wd,
             'momentum': args.m
@@ -159,6 +172,8 @@ if __name__ == '__main__':
     print('[+] running with configuration')
     print(f'  [-] batch size: {args.bs}')
     print(f'  [-] learning rate: {args.lr}')
+    print(f'  [-] learning rate decay factor: {args.lrd}')
+    print(f'  [-] learning rate decay period: {args.lrp}')
     print(f'  [-] momentum: {args.m}')
     print(f'  [-] weight decay L2: {args.wd}')
     print(f'  [-] epochs: {args.num_epochs}')

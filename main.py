@@ -1,6 +1,5 @@
 import os
 import json
-from collections import defaultdict
 
 import torch
 import random
@@ -57,7 +56,9 @@ def model_init(args):
             n_classes=get_dataset_num_classes(args.dataset),
             learning_rate=args.lr,
             momentum=args.m,
-            weight_decay=args.wd
+            weight_decay=args.wd,
+            learning_rate_decay=1.0,
+            learning_rate_decay_period=5
         )
     raise NotImplementedError
 
@@ -157,16 +158,16 @@ def main():
     set_seed(args.seed)
     # model is compiled to CPU and operates on GPU for
     # algebraic operations
-    print(f'Initializing model...')
+    print('[+] initializing model... ', end = '', flush = True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model_init(args)
     # model = torch.compile(model)
     model = model.to(device)
-    print('Done.')
+    print('done')
     # federated datasets are shared among training and testing clients
-    print('Generate datasets...')
+    print('[+] loading datasets... ', end = '', flush = True)
     train_datasets, test_datasets = get_datasets(args)
-    print('Done.')
+    print('done')
     # initialize configuration for weights & biases log
     wandb.init(
         project='mldl23-fl',

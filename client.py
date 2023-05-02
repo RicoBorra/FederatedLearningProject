@@ -70,7 +70,7 @@ class Client:
         """
 
         # stochastic gradient descent optimizer
-        optimizer: optim.Optimizer = optim.SGD(self.model.parameters(), lr = 5e-3, momentum = 0.9, weight_decay = 1e-4)
+        optimizer: optim.Optimizer = optim.SGD(self.model.parameters(), lr = self.args.lr, momentum = self.args.m, weight_decay = self.args.m)
         # enable training mode
         self.model.train()
         # runs epochs of training
