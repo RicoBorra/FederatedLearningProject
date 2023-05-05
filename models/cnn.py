@@ -27,9 +27,7 @@ class Network(nn.Module):
         n_classes: int,
         learning_rate: float = 1e-3,
         momentum: float = 0.9,
-        weight_decay: float = 1e-4,
-        learning_rate_decay: float = 1.0,
-        learning_rate_decay_period: int = 5
+        weight_decay: float = 1e-4
     ):
         '''
         Constructs a convolutional neural network for classifying gray scale
@@ -45,10 +43,6 @@ class Network(nn.Module):
             Learning momentum for stochastic gradient descent (0.9 by default)
         weight_decay: float = 1e-4
             L2 weight penalty (1e-4 by default)
-        learning_rate_decay: float
-            Learning rate multiplicative decay factor (1.0 by default, that is no decay)
-        learning_rate_decay_period: int
-            Learning rate decay period (5 epochs by default)
         '''
 
         super(Network, self).__init__()
@@ -80,11 +74,7 @@ class Network(nn.Module):
             weight_decay = weight_decay
         )
         # scheduler
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer,
-            step_size = learning_rate_decay_period,
-            gamma = learning_rate_decay
-        )
+        self.scheduler = None
         # loss criterion configuration
         self.criterion = nn.CrossEntropyLoss()
 
@@ -243,8 +233,10 @@ class Trainer(object):
             start = time.time()
             training_loss, training_score = self.training_step(network)
             testing_loss, testing_score = self.testing_step(network)
-            network.scheduler.step()
             elapsed = time.time() - start
+
+            if network.scheduler is not None:
+                network.scheduler.step()
 
             if self.verbose:
                 self.log(

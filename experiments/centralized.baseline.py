@@ -28,15 +28,33 @@ def set_seed(random_seed):
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser()
+    epilog = "note: argument \'--lrs\' accept different learning rate scheduling choices (\'exp\' or \'step\') followed by decaying factor and decaying period\n\n" \
+        "examples:\n\n" \
+        ">>> python3 experiments/centralized.baseline.py --bs 256 --lr 0.1 --m 0.9 --wd 0.0001 --num_epochs 10 --lrs exp 0.5\n\n" \
+        "This command executes the experiment using\n" \
+        " [+] batch size: 256\n" \
+        " [+] learning rate: 0.1 decaying exponentially with multiplicative factor 0.5\n" \
+        " [+] SGD momentum: 0.9\n" \
+        " [+] SGD weight decay penalty: 0.0001\n" \
+        " [+] running epoch for training and validation: 10\n\n" \
+        ">>> python3 experiments/centralized.baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs step 0.75 3\n\n" \
+        "This command executes the experiment using\n" \
+        " [+] batch size: 512\n" \
+        " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 epochs\n" \
+        " [+] running epoch for training and validation: 100"
+    parser = argparse.ArgumentParser(
+        usage='run experiment on baseline EMNIST dataset (centralized) with a CNN architecture',
+        description='This program is used to log to Weights & Biases training and validation results\nevery epoch of training on the EMNIST dataset. The employed architecture is a\nconvolutional neural network with two convolutional blocks and a fully connected layer.\nStochastic gradient descent is used by default as optimizer along with cross entropy loss.',
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('--seed', type=int, default=0, help='random seed')
     parser.add_argument('--num_epochs', default=10, type=int, help='number of local epochs')
     parser.add_argument('--lr', type=float, default=0.05, help='learning rate')
     parser.add_argument('--bs', type=int, default=512, help='batch size')
     parser.add_argument('--wd', type=float, default=0, help='weight decay')
     parser.add_argument('--m', type=float, default=0.9, help='momentum')
-    parser.add_argument('--lrd', type=float, default=1.0, help='learning rate decay factor (multiplicative)')
-    parser.add_argument('--lrp', type=int, default=5, help='learning rate decay period (epochs count)')
+    parser.add_argument('--lrs', metavar=('scheduler', 'params'), nargs='+', type=str, default=['none'], help='Learning rate decay scheduling')
     return parser.parse_args()
 
 
@@ -53,15 +71,26 @@ def load_emnist(batch_size: int):
     )
 
 
-def load_model(learning_rate: float, weight_decay: float, momentum: float, learning_rate_decay: float, learning_rate_decay_period: int):
-    return cnn.Network(
+def load_model(args):
+    scheling = args.lrs[0].lower()
+    model = cnn.Network(
         n_classes = 62, 
-        learning_rate = learning_rate, 
-        momentum = momentum, 
-        weight_decay = weight_decay, 
-        learning_rate_decay = learning_rate_decay, 
-        learning_rate_decay_period = learning_rate_decay_period
+        learning_rate = args.lr, 
+        momentum = args.m, 
+        weight_decay = args.wd
     )
+    # constructs learning rate scheduler
+    if scheling == 'none':
+        model.scheduler = None
+    elif scheling == 'exp':
+        model.scheduler = torch.optim.lr_scheduler.ExponentialLR(model.optimizer, gamma = float(args.lrs[1]))
+    elif scheling == 'step':
+        model.scheduler = torch.optim.lr_scheduler.StepLR(model.optimizer, step_size = int(args.lrs[2]), gamma = float(args.lrs[1]))
+    else:
+        print('[*] unrecognized learning rate scheduling, set to \'none\'')
+        model.scheduler = None
+    # yields built model
+    return model
 
 
 def training(model: cnn.Network, X: torch.Tensor, y: torch.Tensor) -> tuple[float, float]:
@@ -123,7 +152,8 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
                 validation_loss, validation_score = validation_loss + validation_batch_loss, validation_score + validation_batch_score
                 validation_progress.update(1)
         # execute scheduler for learning rate
-        model.scheduler.step()
+        if model.scheduler is not None:
+            model.scheduler.step()
         # stop progress bars
         training_progress.close()
         validation_progress.close()
@@ -150,19 +180,18 @@ if __name__ == '__main__':
     # data loaders
     training_loader, validation_loader = load_emnist(batch_size = args.bs)
     # load model
-    model = load_model(learning_rate = args.lr, weight_decay = args.wd, momentum = args.m, learning_rate_decay = args.lrd, learning_rate_decay_period = args.lrp)
+    model = load_model(args)
     # log
     wandb.init(
         project='federated_learning',
-        name=f'EMNIST_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRD{args.lrd}_LRP{args.lrp}',
+        name=f"EMNIST_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
         config={
             'seed': args.seed,
             'dataset': 'emnist',
             'model': 'cnn',
             'num_epochs': args.num_epochs,
             'learning_rate': args.lr,
-            'learning_rate_decay': None if args.lrd == 1.0 else args.lrd,
-            'learning_rate_decay_period': None if args.lrd == 1.0 else args.lrp,
+            'scheduling': args.lrs,
             'batch_size': args.bs,
             'weight_decay': args.wd,
             'momentum': args.m
@@ -172,11 +201,10 @@ if __name__ == '__main__':
     print('[+] running with configuration')
     print(f'  [-] batch size: {args.bs}')
     print(f'  [-] learning rate: {args.lr}')
-    print(f'  [-] learning rate decay factor: {args.lrd}')
-    print(f'  [-] learning rate decay period: {args.lrp}')
     print(f'  [-] momentum: {args.m}')
     print(f'  [-] weight decay L2: {args.wd}')
     print(f'  [-] epochs: {args.num_epochs}')
+    print(f'  [-] learning rate scheduling: {args.lrs}')
     # train and validate model as expeced
     run(model, training_loader, validation_loader, epochs = args.num_epochs)
     # terminate weights & biases session by sincynchronizing
