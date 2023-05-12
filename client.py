@@ -2,7 +2,6 @@ import copy
 import torch
 
 from torch import optim, nn
-from collections import defaultdict
 from torch.utils.data import DataLoader
 
 from utils.utils import HardNegativeMining, MeanReduction
@@ -16,39 +15,33 @@ class Client:
         self.name = self.dataset.client_name
         self.device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model: nn.Module = model.to(self.device)
-        self.train_loader: DataLoader = DataLoader(self.dataset, batch_size=self.args.bs, shuffle=True, drop_last=True) \
-            if not test_client else None
-        self.test_loader: DataLoader = DataLoader(self.dataset, batch_size=1, shuffle=False)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='mean')
-        # self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
+        # training set exists whether the client has been chosen as training client
+        self.train_loader: DataLoader = None if test_client else DataLoader(
+            self.dataset, 
+            batch_size = self.args.bs, 
+            shuffle = True, 
+            drop_last = True
+        )
+        # validation set is passed in one unique big batch practically
+        self.test_loader: DataLoader = DataLoader(
+            self.dataset, 
+            batch_size = len(self.dataset), 
+            shuffle = False
+        )
+        # mean reduction over cross entropy across multiple batch samples
+        self.criterion = nn.CrossEntropyLoss(ignore_index = 255, reduction = 'mean')
         self.reduction = HardNegativeMining() if self.args.hnm else MeanReduction()
 
     def __str__(self):
         return self.name
 
-    @staticmethod
-    def update_metric(metric, outputs, labels):
-        _, prediction = outputs.max(dim=1)
-        labels = labels.cpu().numpy()
-        prediction = prediction.cpu().numpy()
-        metric.update(labels, prediction)
-
-    def _get_outputs(self, images):
-        if self.args.model == 'deeplabv3_mobilenetv2':
-            return self.model(images)['out']
-        if self.args.model == 'resnet18':
-            return self.model(images)
-        if self.args.model == 'cnn':
-            return self.model(images)
-        raise NotImplementedError
-
-    def run_epoch(self, cur_epoch, optimizer):
+    def run_epoch(self, epoch, optimizer):
         """
         This method locally trains the model with the dataset of the client. It handles the training at mini-batch level
-        :param cur_epoch: current epoch of training
+        :param epoch: current epoch of training
         :param optimizer: optimizer used for the local training
         """
-        for cur_step, (images, labels) in enumerate(self.train_loader):
+        for step, (images, labels) in enumerate(self.train_loader):
             # load data into appropriate device
             images, labels = images.to(self.device), labels.to(self.device)
             # compute predicted labels as logits
@@ -58,11 +51,13 @@ class Client:
             # compute gradients
             optimizer.zero_grad()
             loss.backward()
+            # clip gradient to avoid explosion
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 1.0)
             # update weights with fgradients
             optimizer.step()
 
 
-    def train(self):
+    def train(self, lr: float = None):
         """
         This method locally trains the model with the dataset of the client. It handles the training at epochs level
         (by calling the run_epoch method for each local epoch of training)
@@ -70,7 +65,7 @@ class Client:
         """
 
         # stochastic gradient descent optimizer
-        optimizer: optim.Optimizer = optim.SGD(self.model.parameters(), lr = self.args.lr, momentum = self.args.m, weight_decay = self.args.m)
+        optimizer: optim.Optimizer = optim.SGD(self.model.parameters(), lr = self.args.lr if lr is None else lr, momentum = self.args.m, weight_decay = self.args.m)
         # enable training mode
         self.model.train()
         # runs epochs of training
@@ -79,6 +74,7 @@ class Client:
         # length of dataset and model parameters
         return len(self.train_loader.dataset), self.model.state_dict()
 
+    ###### USELESS USING EVALUATORS ######
     def test(self, metric):
         """
         This method tests the model on the local dataset of the client.
@@ -88,14 +84,17 @@ class Client:
         self.model.eval()
         # run validation over each image
         with torch.no_grad():
-            for i, (images, labels) in enumerate(self.test_loader):
-                # load data into appropriate device
-                images, labels = images.to(self.device), labels.to(self.device)
-                # evaluate on test images
-                outputs = self.model(images)
-                # update score metrics
-                self.update_metric(metric, outputs, labels)
+            # get entire validation set, since it is limited in size
+            images, labels = next(iter(self.test_loader))
+            # load data into appropriate device
+            images, labels = images.to(self.device), labels.to(self.device)
+            # evaluate on test images
+            outputs = self.model(images)
+            # update score metrics
+            metric.update(outputs, labels)
+    #########################################
 
+    ###### FIXME #######
     def loss(self, batched: bool = False) -> float:
         '''
         Computes local loss for power of method criterion.
@@ -120,3 +119,4 @@ class Client:
             loss_ += self.criterion(outputs, labels)
 
         return loss_
+    ###### FIXME #######

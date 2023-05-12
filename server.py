@@ -15,13 +15,13 @@ import client
 
 class Server:
 
-    def __init__(self, args, train_clients, test_clients, model, metrics):
+    def __init__(self, args, train_clients, validation_clients, model, evaluators):
         self.args = args
         self.train_clients = train_clients
+        self.validation_clients = validation_clients
         self.selection: ClientSelectionCriterion = None
-        self.test_clients = test_clients
         self.model: torch.nn.Module = model
-        self.metrics = metrics
+        self.evaluators = evaluators
         self.model_params_dict: OrderedDict = copy.deepcopy(self.model.state_dict())
         # assign selection criterion for both training and testing clients
         if self.args.selection == 'uniform':
@@ -48,21 +48,21 @@ class Server:
             num_clients = min(self.args.clients_per_round, len(self.train_clients))
             return np.random.choice(self.train_clients, num_clients, replace=False, p=self.selection.probabilities())
         
-        num_clients = min(self.args.clients_per_round, len(self.test_clients))
-        return np.random.choice(self.test_clients, num_clients, replace=False)
+        num_clients = min(self.args.clients_per_round, len(self.validation_clients))
+        return np.random.choice(self.validation_clients, num_clients, replace=False)
 
     def train_round(self, clients):
         """
-            This method trains the model with the dataset of the clients. It handles the training at single round level
-            :param clients: list of all the clients to train
-            :return: model updates gathered from the clients, to be aggregated
+        This method trains the model with the dataset of the clients. It handles the training at single round level
+        :param clients: list of all the clients to train
+        :return: model updates gathered from the clients, to be aggregated
         """
         updates = []
         for i, client in enumerate(clients):
             # model initialization in each round
-            client.model.load_state_dict(self.model_params_dict)
+            client.model.load_state_dict(copy.deepcopy(self.model_params_dict))
             # train single client
-            size, weights = client.train()
+            size, weights = client.train(lr = None if self.model.scheduler is None else self.model.scheduler.get_lr())
             # collect dataset size used for training and its trained coefficients
             updates.append((size, weights))
         return updates
@@ -98,92 +98,98 @@ class Server:
         wandb.define_metric('round')
 
         wandb.define_metric('accuracy/overall/training', step_metric='round')
-        wandb.define_metric('accuracy/mean/training', step_metric='round')
+        wandb.define_metric('accuracy/weighted/training', step_metric='round')
         wandb.define_metric('accuracy/overall/testing', step_metric='round')
-        wandb.define_metric('accuracy/mean/testing', step_metric='round')
+        wandb.define_metric('accuracy/weighted/testing', step_metric='round')
 
         progress = tqdm.tqdm(total=self.args.num_rounds)
         progress.set_description('Training on federated devices')
 
         for r in range(self.args.num_rounds):
             # select clients for current round
-            clients = self.select_clients()
+            clients = self.select_clients(train = True)
             # collect updated models' weights from trained clients
             updates = self.train_round(clients)
             # aggregate updates from all clients
             self.model_params_dict = self.aggregate(updates)
             # update weights of centralized model
             self.model.load_state_dict(self.model_params_dict)
+            # update learning rate potentially
+            if self.model.scheduler is not None:
+                self.model.scheduler.step()
             # compute validation on training set
-            if r % self.args.eval_interval == 0:
-                self.eval_train()
+            if r > 0 and r % self.args.eval_interval == 0:
+                self.evaluate_training()
                 wandb.log({
                     'round': r + 1,
-                    'accuracy/mean/training': self.metrics['eval_train'].results['Mean Acc'],
-                    'accuracy/overall/training': self.metrics['eval_train'].results['Overall Acc']
+                    'accuracy/weighted/training': self.evaluators['train'].metrics['weighted_accuracy'],
+                    'accuracy/overall/training': self.evaluators['train'].metrics['accuracy']
                 })
             # compute validation on validation set
-            if r % self.args.test_interval == 0:
-                self.test()
+            if r > 0 and r % self.args.test_interval == 0:
+                self.evaluate_validation()
                 wandb.log({
                     'round': r + 1,
-                    'accuracy/mean/testing': self.metrics['test'].results['Mean Acc'],
-                    'accuracy/overall/testing': self.metrics['test'].results['Overall Acc']
+                    'accuracy/weighted/validation': self.evaluators['validation'].metrics['weighted_accuracy'],
+                    'accuracy/overall/validation': self.evaluators['validation'].metrics['accuracy']
                 })
             # print training metrics
-            if r % self.args.print_train_interval == 0:
-                print(self.metrics['eval_train'])
+            if r > 0 and r % self.args.print_train_interval == 0:
+                print(f"[+] overall accuracy : {self.evaluators['train'].metrics['accuracy']:.3f} (training)")
+                print(f"[+] weighted accuracy : {self.evaluators['train'].metrics['weighted_accuracy']:.3f} (training)")
             # print validation metrics
-            if r % self.args.print_test_interval == 0:
-                print(self.metrics['test'])
-
+            if r > 0 and r % self.args.print_test_interval == 0:
+                print(f"[+] overall accuracy : {self.evaluators['validation'].metrics['accuracy']:.3f} (validation)")
+                print(f"[+] weighted accuracy : {self.evaluators['validation'].metrics['weighted_accuracy']:.3f} (validation)")
+            # progress bar update
             progress.update(1)
 
         progress.close()
 
         # last train evaluation update
-        self.eval_train()
+        self.evaluate_training()
         wandb.log({
             'round': self.args.num_rounds,
-            'accuracy/mean/training': self.metrics['eval_train'].results['Mean Acc'],
-            'accuracy/overall/training': self.metrics['eval_train'].results['Overall Acc']
+            'accuracy/weighted/training': self.evaluators['train'].metrics['weighted_accuracy'],
+            'accuracy/overall/training': self.evaluators['train'].metrics['accuracy']
         })
         # last test evaluation update
-        self.test()
+        self.evaluate_validation()
         wandb.log({
             'round': self.args.num_rounds,
-            'accuracy/mean/testing': self.metrics['test'].results['Mean Acc'],
-            'accuracy/overall/testing': self.metrics['test'].results['Overall Acc']
+            'accuracy/weighted/validation': self.evaluators['validation'].metrics['weighted_accuracy'],
+            'accuracy/overall/validation': self.evaluators['validation'].metrics['accuracy']
+        })
+        # FINALLY last testing phase
+        self.evaluate_testing()
+        print({
+            'accuracy/weighted/testing': self.evaluators['test'].metrics['weighted_accuracy'],
+            'accuracy/overall/testing': self.evaluators['test'].metrics['accuracy']
         })
 
-    def eval_train(self):
+    def evaluate_training(self):
         """
-        This method handles the evaluation on the train clients
+        This method handles the evaluation on the trainining.
         """
-        # select train clients
-        clients = self.select_clients()
-        # compute score metrics on each train client
-        for client in clients:
-            # model initialization in each round
-            client.model.load_state_dict(self.model_params_dict)
-            client.test(self.metrics['eval_train'])
-        # compute training metrics
-        self.metrics['eval_train'].get_results()
+        
+        self.evaluators['train'].evaluate(self.model, description = 'Training performance evaluation')
 
-    def test(self):
+    def evaluate_validation(self):
         """
-        This method handles the test on the test clients
+        This method handles the validation.
         """
-        # select test clients
-        clients = self.select_clients(train=False)
-        # compute score metrics on each train client
-        for client in clients:
-            # model initialization in each round
-            client.model.load_state_dict(self.model_params_dict)
-            client.test(self.metrics['test'])
-        # compute test metrics
-        self.metrics['test'].get_results()
+        
+        self.evaluators['validation'].evaluate(self.model, description = 'Validation performance evaluation')
 
+    def evaluate_testing(self):
+        """
+        This method handles the testing.
+        """
+        
+        self.evaluators['test'].evaluate(self.model, description = 'Testing performance evaluation')
+
+
+###### FIXME ######
 
 class ClientSelectionCriterion(metaclass=abc.ABCMeta):
 
@@ -252,3 +258,5 @@ class PowerOfChoiceClientSelectionCriterion(ClientSelectionCriterion):
         self.probabilities_[selected] = 1.0 / self.n_selected
         # yields updated probabilities
         return self.probabilities_
+
+################

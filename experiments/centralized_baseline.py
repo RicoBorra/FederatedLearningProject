@@ -30,17 +30,22 @@ def set_seed(random_seed):
 def get_arguments():
     epilog = "note: argument \'--lrs\' accept different learning rate scheduling choices (\'exp\' or \'step\') followed by decaying factor and decaying period\n\n" \
         "examples:\n\n" \
-        ">>> python3 experiments/centralized.baseline.py --bs 256 --lr 0.1 --m 0.9 --wd 0.0001 --num_epochs 10 --lrs exp 0.5\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --bs 256 --lr 0.1 --m 0.9 --wd 0.0001 --num_epochs 10 --lrs exp 0.5\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 256\n" \
         " [+] learning rate: 0.1 decaying exponentially with multiplicative factor 0.5\n" \
         " [+] SGD momentum: 0.9\n" \
         " [+] SGD weight decay penalty: 0.0001\n" \
         " [+] running epoch for training and validation: 10\n\n" \
-        ">>> python3 experiments/centralized.baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs step 0.75 3\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs step 0.75 3\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 512\n" \
         " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 epochs\n" \
+        " [+] running epoch for training and validation: 100\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs onecycle 0.1\n\n" \
+        "This command executes the experiment using\n" \
+        " [+] batch size: 512\n" \
+        " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
         " [+] running epoch for training and validation: 100"
     parser = argparse.ArgumentParser(
         usage='run experiment on baseline EMNIST dataset (centralized) with a CNN architecture',
@@ -71,8 +76,8 @@ def load_emnist(batch_size: int):
     )
 
 
-def load_model(args):
-    scheling = args.lrs[0].lower()
+def load_model(args, training_loader: DataLoader, validation_loader: DataLoader):
+    scheduling = args.lrs[0].lower()
     model = cnn.Network(
         n_classes = 62, 
         learning_rate = args.lr, 
@@ -80,12 +85,14 @@ def load_model(args):
         weight_decay = args.wd
     )
     # constructs learning rate scheduler
-    if scheling == 'none':
+    if scheduling == 'none':
         model.scheduler = None
-    elif scheling == 'exp':
+    elif scheduling == 'exp':
         model.scheduler = torch.optim.lr_scheduler.ExponentialLR(model.optimizer, gamma = float(args.lrs[1]))
-    elif scheling == 'step':
+    elif scheduling == 'step':
         model.scheduler = torch.optim.lr_scheduler.StepLR(model.optimizer, step_size = int(args.lrs[2]), gamma = float(args.lrs[1]))
+    elif scheduling == 'onecycle':
+        model.scheduler = torch.optim.lr_scheduler.OneCycleLR(model.optimizer, max_lr = float(args.lrs[1]), epochs = int(args.num_epochs), steps_per_epoch = len(training_loader))
     else:
         print('[*] unrecognized learning rate scheduling, set to \'none\'')
         model.scheduler = None
@@ -144,6 +151,9 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
             training_batch_loss, training_batch_score = training(model, X.to(device), y.to(device))
             training_loss, training_score = training_loss + training_batch_loss, training_score + training_batch_score
             training_progress.update(1)
+            # single batch update regarding onecycle annealing
+            if model.scheduler in [ 'onecycle' ]:
+                model.scheduler.step()
         # enable validation mode
         model.eval()
         with torch.no_grad():
@@ -152,7 +162,7 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
                 validation_loss, validation_score = validation_loss + validation_batch_loss, validation_score + validation_batch_score
                 validation_progress.update(1)
         # execute scheduler for learning rate
-        if model.scheduler is not None:
+        if model.scheduler in [ 'step', 'exp' ]:
             model.scheduler.step()
         # stop progress bars
         training_progress.close()
@@ -180,11 +190,11 @@ if __name__ == '__main__':
     # data loaders
     training_loader, validation_loader = load_emnist(batch_size = args.bs)
     # load model
-    model = load_model(args)
+    model = load_model(args, training_loader, validation_loader)
     # log
     wandb.init(
         project='federated_learning',
-        name=f"EMNIST_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
+        name=f"EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
         config={
             'seed': args.seed,
             'dataset': 'emnist',
@@ -199,6 +209,7 @@ if __name__ == '__main__':
     )
     # initial log
     print('[+] running with configuration')
+    print(f'  [-] seed: {args.seed}')
     print(f'  [-] batch size: {args.bs}')
     print(f'  [-] learning rate: {args.lr}')
     print(f'  [-] momentum: {args.m}')

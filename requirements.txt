@@ -14,10 +14,13 @@ psutil
 pyarrow
 pyparsing
 python-dateutil
+pytorch-ignite
 requests
 scipy
 scikit-image
+scikit-learn
 torch>=2.0
+torchmetrics
 torchvision
 tqdm
 wandb
