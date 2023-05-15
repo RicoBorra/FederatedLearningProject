@@ -2,39 +2,31 @@ import torch
 import torch.nn as nn
 from typing import Callable
 
-class CNN(nn.Module):
+class LogisticRegression(nn.Module):
     '''
-    Plain 2D-CNN taking in input images shaped like `[CHANNELS, WIDTH, HEIGHT]` and mapping them to some classes.
+    Simple logistic regression model taking 2D images in input shaped like `[CHANNELS, WIDTH, HEIGHT]`
+    and emitting `num_classes` logits. 
+    '''
 
-    Parameters
-    ----------
-    num_classes: int
-        Number of classes, thus output logits emitted
-    loss_reduction: Callable
-        Loss reduction, see `MeanReduction` or `SumReduction` or `HardNegativeMining`
-    '''
-    
-    def __init__(self, num_classes: int, loss_reduction: Callable):
+    def __init__(self, num_inputs: int, num_classes: int, loss_reduction: Callable):
+        '''
+        Initializes a logistic regression classifier.
+
+        Parameters
+        ----------
+        num_inputs: int
+            Number of input features (in total, so `CHANNELS * WIDTH * HEIGHT`)
+        num_classes: int
+            Number of classes
+        loss_reduction: Callable
+            Loss reduction, see `MeanReduction` or `SumReduction` or `HardNegativeMining`
+        '''
+
         super().__init__()
-        
+
+        self.num_inputs = num_inputs
         self.num_classes = num_classes
-        self.architecture = nn.Sequential(
-            # first convolutional block of 32 channels, max pooling and relu
-            nn.Conv2d(in_channels = 1, out_channels = 32, kernel_size = (5, 5), padding = 'same'),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = 2),
-            nn.ReLU(),
-            # second convolutional block of 64 channels, max pooling and relu
-            nn.Conv2d(in_channels = 32, out_channels = 64, kernel_size = (5, 5), padding = 'same'),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = 2),
-            nn.ReLU(),
-            # transform the two dimensional activation maps into one flatten array
-            nn.Flatten(),
-            # first fully connected layer of 2048 outputs
-            nn.Linear(in_features = 7 * 7 * 64, out_features = 2048),
-            nn.ReLU(),
-            # second and last fully connected layer
-            nn.Linear(in_features = 2048, out_features = num_classes)
-        )
+        self.linear = nn.Linear(in_features = num_inputs, out_features = num_classes)
         self.criterion = nn.CrossEntropyLoss(ignore_index = 255, reduction = 'none')
         self.reduction = loss_reduction
         self.scheduler = None
@@ -49,7 +41,9 @@ class CNN(nn.Module):
             Logits
         '''
 
-        return self.architecture(x)
+        x = x.view(x.size(0), -1)
+        x = self.linear(x)
+        return x
 
     def step(self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer) -> tuple[torch.Tensor, float]:
         '''
@@ -94,7 +88,7 @@ class CNN(nn.Module):
         tuple[torch.Tensor, torch.Tensor, float]
             Linear logits, predicted labels, reduced loss and accuracy
         '''
-        
+
         logits = self(x)
         loss = self.criterion(logits, y)
         loss = self.reduction(loss, y)

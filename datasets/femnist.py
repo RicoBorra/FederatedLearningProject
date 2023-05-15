@@ -1,124 +1,124 @@
-import numpy as np
-import os
+import math
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import numpy as np
 import torch
-import torchvision
-from typing import Any, List, Tuple, Union
+from torch.utils.data import Dataset, Subset
+import torchvision.transforms as transforms
+import os
 
-import datasets.np_transforms as tr
-
-
-class Femnist(torch.utils.data.Dataset):
+class Femnist(Dataset):
     '''
-    This class holds a portion of the femnist dataset held by a specific client on the network.
+    Original femnist dataset with 62 classes. It can be either iid or niid,
+    depending on the simulation arguments. Normally each client has a `Subset`
+    of a `Femnist` dataset instance associated to its user images and labels.
     '''
-    
-    def __init__(self, client_name: str, frame: pd.DataFrame, transform: tr.Compose):
+
+    def __init__(self, frame: pd.DataFrame, normalize: bool = True):
         '''
-        Initializes the shared portion of the dataset.
-        
+        Initializes a whole femnist dataset from a dataframe.
+
         Parameters
         ----------
-        client_name: str
-            Name of user, namely the transmitting client
         frame: pd.DataFrame
-            Dataframe holding the images and corresponding labels
-        transform: tr.Compose
-            Transformation to be applied on features
-        '''
+            Pandas dataframe
+        normalize: bool = True
+            Whether to normalize (standardize) images (True by default)
         
-        super().__init__()
+        Notes
+        -----
+        Dataframe columns should be as follows.
+        * frame.iloc[:, 0] should contain the user identifier
+        * frame.iloc[:, 1] should contain the class label 1...62
+        * frame.iloc[:, 2:786] should contain pixel features
+        '''
 
-        self.client_name = client_name
         self.frame = frame
-        self.transform = transform
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,)),
+        ]) if normalize else transforms.ToTensor()
+
 
     def __len__(self) -> int:
+        '''
+        Length of dataset.
+
+        Returns
+        -------
+        int
+            Number of samples within the dataset
+        '''
+        
         return self.frame.shape[0]
-    
-    def __getitem__(self, index: int) -> Tuple[np.array, int]:
-        image, label = self.frame.iloc[index, 1:785].values, self.frame.iloc[index, 0]
-        image = np.reshape(image, newshape = (28, 28, 1))
 
-        if self.transform:
-            image = self.transform(image)
-        
-        return image, label
-    
-    def split(self, split_size: float, shuffle: bool = True, stratified: bool = False) -> Tuple[Any, Any]:
-        if stratified:
-            return train_test_split(self.frame, train_size = split_size, shuffle = shuffle, stratify = self.frame.iloc[:, 0])
-        else:
-            return train_test_split(self.frame, train_size = split_size, shuffle = shuffle)
-        
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
+        '''
+        Gets image and label at `index`.
 
-def load_femnist(
-        directory: str, 
-        transforms: Tuple[torchvision.transforms.Compose, torchvision.transforms.Compose],
-        as_csv: bool = False
-) -> Tuple[List[Femnist], List[Femnist], List[Femnist], Femnist, Femnist, Femnist]:
+        Parameters
+        ----------
+        index: int
+            Image index
+
+        tuple[torch.Tensor, int]
+            Image and label
+        '''
+
+        x, y = self.frame.iloc[index, 2:786].values, self.frame.iloc[index, 1]
+        # reshape images in 2D as [WIDTH, HEIGHT, CHANNELS]
+        x = np.reshape(x, newshape = (28, 28, 1)).astype(np.float32)
+        # apply transformation, maybe a standardization, and put the
+        # number of channels as first dimension
+        if self.transform is not None:
+            x = self.transform(x)
+        # image and label
+        return x, y
+
+def load(directory: str) -> dict[str, list[tuple[str, Subset]]]:
     '''
-    This loads both training and testing set from specified directory.
+    Loads local clients `Femnist` datasets divided into three macro groups,
+    which are `training`, `validation` and `testing`.
 
     Parameters
     ----------
     directory: str
-        Directory where to read dataset files
-    transforms: Tuple[torchvision.transforms.Compose, torchvision.transforms.Compose]
-        Transformations to be applied on both datasets' features
-    as_csv: bool
-        Enable parsing CSV file instead of PARQUET (False by default)
-    merged: bool
-        If true then returns two datasets, otherwise splits them across clients (false is default)
+        Directory from which the dataframes `training.parquet` and `testing.parquet` are loaded
 
     Returns
     -------
-    Tuple[List[Femnist], List[Femnist], Femnist, Femnist]
-        Returns list of train clients, validation clients, test clients, train set, validation set and test set
+    dict[str, list[tuple[str, Subset]]]
+        Dictonary with groups of clients' datasets
 
     Notes
     -----
-    Files are expected to be 'training.parquet' and 'testing.parquet' in case
-    of compressed format, otherwise 'training.csv' and 'testing.csv'. PARQUET
-    files are extremely efficient in terms of storage and speed (up to ~80 times).
+    Each entry of the dictionary is the list of subsets within the selected group,
+    specifically each dataset of the list is a tuple of the client name and its subset 
+    of data from the original `Femnist` dataset of the same group.
     '''
 
-    def load_femnist_dataset(
-            path: str, 
-            transform: torchvision.transforms.Compose, 
-            as_csv: bool = False,
-            split: bool = False
-    ) -> Union[Tuple[List[Femnist], Femnist, List[Femnist], Femnist], Tuple[List[Femnist], Femnist]]:
-        # loads by default parquet file
-        frame = pd.read_csv(path, index_col = 0) if as_csv else pd.read_parquet(path)
-        # split is used to denote validation split
-        if split:
-            training_data, validation_data = Femnist('*', frame, transform).split(split_size = 0.80, shuffle = False, stratified = False)
-            return (
-                # training sets spread across training clients
-                [
-                    Femnist(client, group, transform)
-                    for client, group in training_data.groupby('user')
-                ], 
-                # whole training data
-                Femnist('train', training_data, transform),
-                # validation sets spread across validation clients
-                [
-                    Femnist(client, group, transform)
-                    for client, group in validation_data.groupby('user')
-                ], 
-                # whole validation data
-                Femnist('validation', validation_data, transform)
-            )
-
-        else:
-            # construct dataset portions assigned to many users
-            return [
-                Femnist(client, group, transform)
-                for client, group in frame.groupby('user')
-            ], Femnist('*', frame, transform)
-    
-    training_clients, training_data, validation_clients, validation_data = load_femnist_dataset(os.path.join(directory, 'training.parquet'), transforms[0], as_csv, split = True)
-    testing_clients, testing_data = load_femnist_dataset(os.path.join(directory, 'testing.parquet'), transforms[1], as_csv)
-    return training_clients, validation_clients, testing_clients, training_data, validation_data, testing_data
+    # whole datasets are stored in a compressed and efficient format
+    training_frame = pd.read_parquet(os.path.join(directory, 'training.parquet'))
+    testing_frame = pd.read_parquet(os.path.join(directory, 'testing.parquet'))
+    # this operation ensures to have unique indices for each entry and not the 
+    # 'user' column
+    training_frame.reset_index(inplace = True)
+    testing_frame.reset_index(inplace = True)
+    # builds whole datasets and three groups of clients (and corresponding subsets)
+    training_data = Femnist(training_frame)
+    testing_data = Femnist(testing_frame)
+    user_datasets = { 'training': [], 'validation': [], 'testing': [] }
+    # first group is 'training' for clients on whose datasets training of central
+    # model is performed
+    for name, group in training_frame.groupby('user'):
+        subset = Subset(training_data, group.index.values)
+        user_datasets['training'].append((name, subset))
+    # sample 20% of 'training' clients datasets and move them to 'validation' group
+    training_users_count = math.floor(0.8 * len(user_datasets['training']))
+    user_datasets['validation'] = user_datasets['training'][training_users_count:]
+    user_datasets['training'] = user_datasets['training'][:training_users_count]
+    # construct 'testing' group of clients datasets
+    for name, group in testing_frame.groupby('user'):
+        subset = Subset(testing_data, group.index.values)
+        user_datasets['testing'].append((name, subset))
+    # three groups of clients datasets
+    return user_datasets
