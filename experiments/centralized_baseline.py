@@ -15,6 +15,7 @@ import wandb
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import cnn
+from utils.reduction import MeanReduction
 
 class KFold(object):
 
@@ -116,9 +117,13 @@ def load_k_fold_emnist(k: int, batch_size: int) -> tuple[list[tuple[DataLoader, 
 
 def load_model(args, n_batches: int):
     scheduling = args.lrs[0].lower()
-    model = cnn.Network(
-        n_classes = 62, 
-        learning_rate = args.lr, 
+    model = cnn.CNN(
+        num_classes = 62,
+        loss_reduction = MeanReduction(),
+    )
+    model.optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr = args.lr, 
         momentum = args.m, 
         weight_decay = args.wd
     )
@@ -138,27 +143,6 @@ def load_model(args, n_batches: int):
         model.scheduler = None
     # yields built model
     return model
-
-
-def training(model: cnn.Network, X: torch.Tensor, y: torch.Tensor) -> tuple[float, float]:
-    # compute predictions
-    predicted = model(X)
-    # compute loss
-    loss = model.criterion(predicted, y)
-    # update weights after gradient computation
-    model.optimizer.zero_grad()
-    loss.backward()
-    model.optimizer.step()
-    # return loss and score
-    return loss.item(), (predicted.argmax(1) == y).to(dtype = torch.float).sum().item()
-
-def validation(model: cnn.Network, X: torch.Tensor, y: torch.Tensor) -> tuple[float, float]:
-    # compute predictions
-    predicted = model(X)
-    # compute loss
-    loss = model.criterion(predicted, y)
-    # return loss and score
-    return loss.item(), (predicted.argmax(1) == y).to(dtype = torch.float).sum().item()
 
 def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: DataLoader, epochs: int) -> tuple[float, float]:
     '''
@@ -199,7 +183,9 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
         model.train()
         # train loop
         for X, y in training_loader:
-            training_batch_loss, training_batch_score = training(model, X.to(device), y.to(device))
+            X, y = X.to(device), y.to(device)
+            training_batch_logits, training_batch_loss = model.step(X, y, model.optimizer)
+            training_batch_score = (training_batch_logits.argmax(1) == y).sum().item()
             training_loss, training_score = training_loss + training_batch_loss, training_score + training_batch_score
             training_progress.update(1)
             # single batch update regarding onecycle annealing
@@ -209,7 +195,9 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
         model.eval()
         with torch.no_grad():
             for X, y in validation_loader:
-                validation_batch_loss, validation_batch_score = validation(model, X.to(device), y.to(device))
+                X, y = X.to(device), y.to(device)
+                _, validation_batch_predicted, validation_batch_loss, _ = model.evaluate(X, y)
+                validation_batch_score = (validation_batch_predicted == y).sum().item()
                 validation_loss, validation_score = validation_loss + validation_batch_loss, validation_score + validation_batch_score
                 validation_progress.update(1)
         # execute scheduler for learning rate
@@ -243,6 +231,7 @@ if __name__ == '__main__':
     set_seed(args.seed)
     # log
     wandb.init(
+        mode='disabled',
         project='federated_learning',
         name=f"EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
         config={
