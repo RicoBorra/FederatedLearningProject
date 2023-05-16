@@ -44,12 +44,15 @@ class Client(object):
         self.device = device
         self.loader = DataLoader(dataset, batch_size = args.batch_size)
 
-    def train(self, model: nn.Module) -> Any:
+    def train(self, algorithm: Any, model: nn.Module) -> Any:
         '''
-        Runs `args.epochs` of training using the passed `model`.
+        Runs federated `algorithm` for training to optimize central server `model`
+        on local dataset.
 
         Parameters
         ----------
+        algorithm: Any
+            Algorithm to be run on client at each round, see `FedAlgorithm` descendants
         model: nn.Module
             Model initialized with central server parameters
             at the beginning of the round
@@ -57,32 +60,14 @@ class Client(object):
         Returns
         -------
         Any
-            State update collected by central server
+            State update collected by central server algorithm
         '''
 
         # fails if training is invoked on a validator or tester
         assert not self.validator
-        # plain stochastic gradient descent
-        # weight decay is L2 (ridge) penalty
-        optimizer = torch.optim.SGD(
-                model.parameters(), 
-                lr = self.args.learning_rate, 
-                momentum = self.args.momentum, 
-                weight_decay = self.args.weight_decay
-        )
-        # train mode to enforce gradient computation
-        model.train()
-        # during local epochs the client model deviates
-        # from the original configuration passed by the
-        # central server
-        for epoch in range(self.args.epochs):
-            for x, y in self.loader:
-                x = x.to(self.device)
-                y = y.to(self.device)
-                model.step(x, y, optimizer)
-
-        # clone of updated client parameters and size of local dataset
-        return deepcopy(model.state_dict()), len(self.dataset)
+        # local training handled by appropriate algorithm and
+        # then updated weights are returned
+        return algorithm.visit(client = self, model = model)
     
     def validate(self, model: nn.Module, metrics: FederatedMetrics):
         '''

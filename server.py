@@ -1,4 +1,4 @@
-from copy import deepcopy
+import math
 import numpy as np
 import os
 import random
@@ -30,7 +30,7 @@ class Server(object):
         Parameters
         -----------
         algorithm: type
-            Class type of the algorithm to be used, see `FederatedAlgorithm` or `FederatedAverage`
+            Class type of the algorithm to be used, see `FedAlgorithm` or `FedAvg`
         model: nn.Module
             Central model which is passed by reference across clients for the sake of the simulation
         clients: dict[str, Client]
@@ -41,7 +41,7 @@ class Server(object):
         
         self.args = args
         self.model = model
-        self.algorithm = algorithm(state = deepcopy(model.state_dict()))
+        self.algorithm = algorithm(model.state_dict())
         self.clients = clients
         self.evaluators = { group: FederatedMetrics() for group in clients.keys() }
     
@@ -79,14 +79,8 @@ class Server(object):
             locals.reset()
             # selects 'args.selected' training clients and trains them
             for client in self.select():
-                # first the model is passed by reference to the client just to speed up 
-                # the computation, yet the model is initialized with the same parameters of 
-                # the central model at the beginning of the round
-                self.model.load_state_dict(self.algorithm.state)
-                # the local client update is returned...
-                update = client.train(self.model)
-                # ...and collected by the federated algorithm
-                self.algorithm.accumulate(update)
+                # the local client update is returned and collected by the federated algorithm
+                client.train(self.algorithm, self.model)
                 # progress bar update in 1...args.selected
                 locals.update(1)
             # disable gradient computations during evaluation
@@ -100,12 +94,13 @@ class Server(object):
                 self.model.load_state_dict(self.algorithm.state)
                 # eventually evaluates the model on training and validation cloents
                 if round > 0 and round % self.args.evaluation == 0:
-                    self.evaluate(round)
+                    # FIXME subset evaluation
+                    self.evaluate(round, fraction = 0.25)
                 # eventually saves updated central model parameters as checkpoint
                 if self.args.checkpoint is not None and round > 0 and round % int(self.args.checkpoint[0]) == 0:
                     self.save(round)
 
-    def evaluate(self, round: int):
+    def evaluate(self, round: int, fraction: float = 1.0):
         '''
         Evaluates performance of central model on `training` and `validation` clients and logs
         performance metrics.
@@ -113,15 +108,20 @@ class Server(object):
         Parameters
         ----------
         round: int
-            Training round of the server        
+            Training round of the server
+        fraction: float
+            Fraction of clients from each group to be evaluated (1.0 by default)  
         '''
 
         # FIXME subset evaluation
+        validators = random.sample(self.clients['training'], k = math.floor(fraction * len(self.clients['training']))) if fraction < 1.0 else self.clients['training']
         # evaluation of clients from 'training' group
-        for client in tqdm(self.clients['training'], desc = '[+] evaluating training clients'):
+        for client in tqdm(validators, desc = '[+] evaluating training clients'):
             client.validate(self.model, self.evaluators['training'])
+        # FIXME subset evaluation
+        validators = random.sample(self.clients['validation'], k = math.floor(fraction * len(self.clients['validation']))) if fraction < 1.0 else self.clients['validation']
         # evaluation of clients from 'validation' group
-        for client in tqdm(self.clients['validation'], desc = '[+] evaluating validation clients'):
+        for client in tqdm(validators, desc = '[+] evaluating validation clients'):
             client.validate(self.model, self.evaluators['validation'])
         # compute metrics at the end of the round
         self.evaluators['training'].compute()

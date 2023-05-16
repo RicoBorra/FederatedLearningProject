@@ -48,7 +48,7 @@ class MeanReduction(object):
     Computes a mean aggregation on a loss tensor.
     '''
 
-    def __call__(self, loss: torch.Tensor, target: torch.Tensor):
+    def __call__(self, loss: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         '''
         Reduces a loss tensor to a single number.
 
@@ -73,7 +73,7 @@ class SumReduction(object):
     Computes a sum aggregation on a loss tensor.
     '''
 
-    def __call__(self, loss: torch.Tensor, target: torch.Tensor):
+    def __call__(self, loss: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         '''
         Reduces a loss tensor to a single number.
 

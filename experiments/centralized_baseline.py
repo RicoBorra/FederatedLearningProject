@@ -75,19 +75,20 @@ def get_arguments():
         " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
         " [+] running epoch for training and validation: 100"
     parser = argparse.ArgumentParser(
-        usage='run experiment on baseline EMNIST dataset (centralized) with a CNN architecture',
-        description='This program is used to log to Weights & Biases training and validation results\nevery epoch of training on the EMNIST dataset. The employed architecture is a\nconvolutional neural network with two convolutional blocks and a fully connected layer.\nStochastic gradient descent is used by default as optimizer along with cross entropy loss.',
-        epilog=epilog,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        usage = 'run experiment on baseline EMNIST dataset (centralized) with a CNN architecture',
+        description = 'This program is used to log to Weights & Biases training and validation results\nevery epoch of training on the EMNIST dataset. The employed architecture is a\nconvolutional neural network with two convolutional blocks and a fully connected layer.\nStochastic gradient descent is used by default as optimizer along with cross entropy loss.',
+        epilog = epilog,
+        formatter_class = argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--seed', type=int, default=0, help='random seed')
-    parser.add_argument('--num_epochs', default=10, type=int, help='number of local epochs')
-    parser.add_argument('--lr', type=float, default=0.05, help='learning rate')
-    parser.add_argument('--bs', type=int, default=512, help='batch size')
-    parser.add_argument('--wd', type=float, default=0, help='weight decay')
-    parser.add_argument('--m', type=float, default=0.9, help='momentum')
-    parser.add_argument('--lrs', metavar=('scheduler', 'params'), nargs='+', type=str, default=['none'], help='learning rate decay scheduling')
+    parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
+    parser.add_argument('--num_epochs', default = 10, type = int, help = 'number of local epochs')
+    parser.add_argument('--lr', type = float, default = 0.05, help = 'learning rate')
+    parser.add_argument('--bs', type = int, default = 512, help = 'batch size')
+    parser.add_argument('--wd', type = float, default = 0, help = 'weight decay')
+    parser.add_argument('--m', type = float, default = 0.9, help = 'momentum')
+    parser.add_argument('--lrs', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling')
     parser.add_argument('--kfold', type=int, default=None, help='kfold cross validation')
+    parser.add_argument('--log', action='store_true', default=False, help='whether or not to log to weights & biases')
     return parser.parse_args()
 
 
@@ -231,10 +232,10 @@ if __name__ == '__main__':
     set_seed(args.seed)
     # log
     wandb.init(
-        mode='disabled',
-        project='federated_learning',
-        name=f"EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
-        config={
+        mode = 'online' if args.log else 'disabled',
+        project = 'federated_learning',
+        name = f"EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
+        config = {
             'seed': args.seed,
             'dataset': 'emnist',
             'model': 'cnn',
@@ -255,6 +256,7 @@ if __name__ == '__main__':
     print(f'  [-] weight decay L2: {args.wd}')
     print(f'  [-] epochs: {args.num_epochs}')
     print(f'  [-] learning rate scheduling: {args.lrs}')
+    print(f'  [-] remote log enabled: {args.log}')
     # execution has two modes, kfold or none
     if args.kfold is not None:
         # data loaders (training and validation for each fold) and unique testing loader
@@ -277,8 +279,8 @@ if __name__ == '__main__':
             progress.update(1)
         # compute averages
         progress.close()
-        print(f'mean validation loss: {np.mean(losses):.3f} ± {np.std(losses):.3f}')
-        print(f'mean validation score: {np.mean(scores):.3f} ± {np.std(scores):.3f}')
+        print(f'[+] mean validation loss: {np.mean(losses):.3f} ± {np.std(losses):.3f}')
+        print(f'[+] mean validation score: {np.mean(scores):.3f} ± {np.std(scores):.3f}')
     else:
         # data loaders
         training_loader, validation_loader = load_emnist(batch_size = args.bs)

@@ -37,7 +37,6 @@ class CNN(nn.Module):
         )
         self.criterion = nn.CrossEntropyLoss(ignore_index = 255, reduction = 'none')
         self.reduction = loss_reduction
-        self.scheduler = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
