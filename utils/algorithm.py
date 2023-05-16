@@ -183,7 +183,7 @@ class FedAvg(FedAlgorithm):
 
 class FedProx(FedAvg):
     '''
-    This algorithm is the plain federated averaging, from Li et al. (2018), 
+    This algorithm is the fedprox, from Li et al. (2018), 
     which updates the central model by averaging clients model using their local datasets
     sizes as weights and uses a proximal term in optimization.
     '''
