@@ -233,7 +233,7 @@ if __name__ == '__main__':
     # log
     wandb.init(
         mode = 'online' if args.log else 'disabled',
-        project = 'federated_learning',
+        project = 'centralized',
         name = f"EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
         config = {
             'seed': args.seed,
