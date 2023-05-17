@@ -93,12 +93,16 @@ class Server(object):
                 # computed with the federated learning algorithm
                 self.model.load_state_dict(self.algorithm.state)
                 # eventually evaluates the model on training and validation cloents
-                if round > 0 and round % self.args.evaluation == 0:
+                if round % self.args.evaluation == 0:
                     # FIXME subset evaluation
                     self.evaluate(round, fraction = 0.25)
                 # eventually saves updated central model parameters as checkpoint
                 if self.args.checkpoint is not None and round > 0 and round % int(self.args.checkpoint[0]) == 0:
                     self.save(round)
+        # final evaluation
+        # FIXME subset evaluation
+        with torch.no_grad():
+            self.evaluate(self.args.rounds, fraction = 0.25)
 
     def evaluate(self, round: int, fraction: float = 1.0):
         '''
