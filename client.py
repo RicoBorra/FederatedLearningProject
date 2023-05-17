@@ -2,7 +2,7 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 from torch.utils.data import Subset, DataLoader
-from typing import Any
+from typing import Any, Tuple
 
 from utils.evaluation import FederatedMetrics
 
@@ -71,7 +71,7 @@ class Client(object):
     
     def validate(self, model: nn.Module, metrics: FederatedMetrics):
         '''
-        Evaluates central model performance on local client dataset.
+        Evaluates central model performance on local client dataset and updates metrics.
 
         Notes
         -----
@@ -88,6 +88,33 @@ class Client(object):
             with evaluation results
         '''
 
+        # note that torch.no_grad is invoked a priori by the server
+        # so no need here
+        logits, y, _, _, _ = self.evaluate(model)
+        # performance metrics are updated with outputs and targets
+        metrics.update(logits, y)
+
+    def evaluate(self, model: nn.Module) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
+        '''
+        Evaluates central model performance on local client dataset.
+
+        Notes
+        -----
+        The local dataset, limited in size, is fed in one pass to the
+        model to speed up parallelization.
+
+        Parameters
+        ----------
+        model: nn.Module
+            Model initialized with central server parameters
+            at the beginning of the round
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float, float]
+            Tuple with logits, y, predictions, loss and accuracy
+        '''
+
         loader = DataLoader(self.dataset, batch_size = len(self.dataset))
         x, y = next(iter(loader))
         x = x.to(self.device)
@@ -97,8 +124,8 @@ class Client(object):
         # note that torch.no_grad is invoked a priori by the server
         # so no need here
         logits, predictions, loss, accuracy = model.evaluate(x, y)
-        # performance metrics are updated with outputs and targets
-        metrics.update(logits, y)
+        # yields outputs
+        return logits, y, predictions, loss, accuracy
 
 def construct(user_datasets: dict[str, list[tuple[str, Subset]]], device: torch.device, args: Any) -> dict[str, list[Client]]:
     '''

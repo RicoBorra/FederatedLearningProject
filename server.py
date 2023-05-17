@@ -95,16 +95,15 @@ class Server(object):
                 # eventually evaluates the model on training and validation cloents
                 if round % self.args.evaluation == 0:
                     # FIXME subset evaluation
-                    self.evaluate(round, fraction = 0.25)
+                    self.evaluate(round, fraction = self.args.evaluation_fraction)
                 # eventually saves updated central model parameters as checkpoint
                 if self.args.checkpoint is not None and round > 0 and round % int(self.args.checkpoint[0]) == 0:
                     self.save(round)
         # final evaluation
-        # FIXME subset evaluation
         with torch.no_grad():
-            self.evaluate(self.args.rounds, fraction = 0.25)
+            self.evaluate(self.args.rounds, fraction = self.args.evaluation_fraction)
 
-    def evaluate(self, round: int, fraction: float = 1.0):
+    def evaluate(self, round: int, fraction: float):
         '''
         Evaluates performance of central model on `training` and `validation` clients and logs
         performance metrics.

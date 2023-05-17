@@ -74,6 +74,8 @@ class CNN(nn.Module):
         loss = self.reduction(loss, y)
         optimizer.zero_grad()
         loss.backward()
+        # FIXME gradient clip
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
         optimizer.step()
         return logits, loss.item()
 

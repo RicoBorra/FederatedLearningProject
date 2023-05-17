@@ -158,7 +158,7 @@ def get_arguments() -> Any:
     parser.add_argument('--rounds', type = int, help = 'number of rounds')
     parser.add_argument('--epochs', type = int, help = 'number of local epochs')
     parser.add_argument('--selected', type = int, help = 'number of clients trained per round')
-    parser.add_argument('--selection', choices = ['uniform', 'hybrid', 'poc'], default = 'uniform', type = str, help = 'criterion for selecting partecipating clients each round')
+    parser.add_argument('--selection', metavar = ('selection', 'params'), type = str, nargs = '+', default = ['uniform'], help = 'criterion for selecting partecipating clients each round, like \'uniform\' or \'hybrid\' or \'pow\'')
     parser.add_argument('--reduction', type = str, default = 'mean', choices = ['mean', 'sum', 'hnm'], help = 'Hard negative mining or mean or sum loss reduction')
     parser.add_argument('--learning_rate', type = float, default = 0.05, help = 'learning rate')
     parser.add_argument('--batch_size', type = int, default = 64, help = 'batch size')
@@ -167,6 +167,7 @@ def get_arguments() -> Any:
     parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'Learning rate decay scheduling, like \'step\' or \'exp\' or \'onecycle\'')
     parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'Federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
     parser.add_argument('--evaluation', type = int, default = 10, help = 'evaluation interval of training and validation set')
+    parser.add_argument('--evaluation_fraction', type = float, default = 0.25, help = 'fraction of clients to be evaluated from training and validation set')
     parser.add_argument('--checkpoint', metavar = ('interval', 'params'), type = str, nargs = '+', default = None, help = 'Checkpoint after rounds interval and directory')
     parser.add_argument('--log', action = 'store_true', default = False, help = 'whether or not to log to weights & biases')
 
@@ -222,8 +223,9 @@ if __name__ == '__main__':
     print(f'  [-] rounds: {args.rounds}')
     print(f'  [-] epochs: {args.epochs}')
     print(f'  [-] clients selected: {args.selected}')
-    print(f'  [-] selection strategy: {args.selection}')
-    print(f'  [-] checkpoint: {args.checkpoint}')
+    print(f"  [-] selection strategy: {' '.join(args.selection)}")
+    print(f'  [-] fraction of clients evaluated: {args.evaluation_fraction}')
+    print(f"  [-] checkpoint: {args.checkpoint if args.checkpoint else 'none'}")
     print(f'  [-] remote log enabled: {args.log}')
     # initialize configuration for weights & biases log
     wandb.init(
