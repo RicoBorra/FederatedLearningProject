@@ -33,7 +33,7 @@ class FedAlgorithm(ABC):
     >>>     update = algorithm.visit(client, model)
     >>> ...
     >>> # the algorithm updates the internal state and returns it
-    >>> algorithm.update()
+    >>> algorithm.aggregate()
     >>> updated_state = algorithm.state
     '''
 
@@ -56,7 +56,7 @@ class FedAlgorithm(ABC):
 
         Notes
         -----
-        After invoking any `collect(...)` and a final `update(...)`,
+        After invoking any `visit(...)` and a final `aggregate(...)`,
         then the state changes.
         '''
         
@@ -83,9 +83,9 @@ class FedAlgorithm(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def update(self):
+    def aggregate(self):
         '''
-        Updates server model (central) state consuming all clients updates.
+        Updates server model (central) state aggregating all clients updates.
         '''
 
         raise NotImplementedError()
@@ -162,7 +162,7 @@ class FedAvg(FedAlgorithm):
         # returns it to outside
         return update
 
-    def update(self):
+    def aggregate(self):
         '''
         Updates central model state by computing a weighted average of clients' states with their local datasets' sizes.
         '''

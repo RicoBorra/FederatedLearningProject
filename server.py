@@ -88,7 +88,7 @@ class Server(object):
                 # finally, at the end of the round, the new model
                 # state parameters are updated by aggregating local
                 # updates from client
-                self.algorithm.update()
+                self.algorithm.aggregate()
                 # central model parameters are reinitialized with those
                 # computed with the federated learning algorithm
                 self.model.load_state_dict(self.algorithm.state)
