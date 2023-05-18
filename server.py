@@ -166,14 +166,16 @@ class Server(object):
         '''
 
         # this loads models' parameters and gradients at each log
-        wandb.watch(self.model, log='all')
+        wandb.watch(self.model, log = 'all')
         # this uses the round as x-axis metric when representing curves
         wandb.define_metric('round')
-        # represented curves are training and validation accuracies (class weighted and overall)
-        wandb.define_metric('accuracy/overall/training', step_metric='round')
-        wandb.define_metric('accuracy/weighted/training', step_metric='round')
-        wandb.define_metric('accuracy/overall/validation', step_metric='round')
-        wandb.define_metric('accuracy/weighted/validation', step_metric='round')
+        # represented curves are training and validation accuracies (class weighted and overall) and losses
+        wandb.define_metric('accuracy/overall/training', step_metric = 'round')
+        wandb.define_metric('accuracy/weighted/training', step_metric = 'round')
+        wandb.define_metric('accuracy/overall/validation', step_metric = 'round')
+        wandb.define_metric('accuracy/weighted/validation', step_metric = 'round')
+        wandb.define_metric('loss/training', step_metric = 'round')
+        wandb.define_metric('loss/validation', step_metric = 'round')
 
     def initialize_client_selection_strategy(self):
         '''
