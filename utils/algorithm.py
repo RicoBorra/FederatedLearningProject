@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from copy import deepcopy
+import numpy as np
 import torch
 import torch.nn as nn
 from typing import Any, Iterable, Tuple
@@ -131,7 +132,7 @@ class FedAvg(FedAlgorithm):
         -----
         The update consists in a tuple of client trained weights and local dataset size.
         '''
-
+        
         # first the model is passed by reference to the client just to speed up 
         # the computation, yet the model is initialized with the same parameters of 
         # the central model at the beginning of the round
@@ -153,7 +154,10 @@ class FedAvg(FedAlgorithm):
             for x, y in client.loader:
                 x = x.to(client.device)
                 y = y.to(client.device)
-                model.step(x, y, optimizer)
+                logits, loss = model.step(x, y, optimizer)
+
+                ## FIXME checks
+                # assert torch.isfinite(logits).all() and np.isfinite(loss)
 
         # clone of updated client parameters and size of local dataset
         update = deepcopy(model.state_dict()), len(client.dataset)

@@ -140,12 +140,13 @@ def get_arguments() -> Any:
             " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 central rounds\n" \
             " [+] running server rounds for training and validation: 1000\n" \
             " [+] running local client epoch: 5\n\n" \
-            ">>> python3 experiments/script.py --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --scheduler onecycle 0.1 --algorithm fedavg --checkpoint 5 ./saved\n\n" \
+            ">>> python3 experiments/script.py --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --scheduler onecycle 0.1 --algorithm fedavg --selection poc 30 --checkpoint 5 ./saved\n\n" \
             "This command executes the experiment using\n" \
             " [+] algorithm: fedavg\n" \
             " [+] checkpoint: saves model parameters every 5 rounds in ./saved\n" \
             " [+] dataset distribution: niid (unbalanced across clients)\n" \
             " [+] batch size: 512\n" \
+            " [+] selection strategy: power of choice with candidate set of 30 clients\n" \
             " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
             " [+] running server rounds for training and validation: 500\n" \
             " [+] running local client epoch: 5"
@@ -158,7 +159,7 @@ def get_arguments() -> Any:
     parser.add_argument('--rounds', type = int, help = 'number of rounds')
     parser.add_argument('--epochs', type = int, help = 'number of local epochs')
     parser.add_argument('--selected', type = int, help = 'number of clients trained per round')
-    parser.add_argument('--selection', metavar = ('selection', 'params'), type = str, nargs = '+', default = ['uniform'], help = 'criterion for selecting partecipating clients each round, like \'uniform\' or \'hybrid\' or \'pow\'')
+    parser.add_argument('--selection', metavar = ('selection', 'params'), type = str, nargs = '+', default = ['uniform'], help = 'criterion for selecting partecipating clients each round, like \'uniform\' or \'hybrid\' or \'poc\'')
     parser.add_argument('--reduction', type = str, default = 'mean', choices = ['mean', 'sum', 'hnm'], help = 'Hard negative mining or mean or sum loss reduction')
     parser.add_argument('--learning_rate', type = float, default = 0.05, help = 'learning rate')
     parser.add_argument('--batch_size', type = int, default = 64, help = 'batch size')

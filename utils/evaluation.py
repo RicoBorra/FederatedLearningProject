@@ -1,7 +1,32 @@
 import numpy
-from typing import Union
+from typing import Callable, Union
 import torch
 from torchmetrics.classification import MulticlassConfusionMatrix
+
+class FederatedLossObjective(object):
+
+    def __init__(
+        self,
+        objective: Callable[[torch.Tensor, torch.Tensor], float]
+    ):
+        self.objective = objective
+        self._value = 0.0
+        self._normalizer = 0.0
+
+    def update(self, outputs: torch.Tensor, target: torch.Tensor):
+        self._value += target.size(0) * self.objective(outputs, target)
+        self._normalizer += target.size(0)
+
+    def update(self, outputs: torch.Tensor, target: torch.Tensor, loss: float):
+        self._value += target.size(0) * loss
+        self._normalizer += target.size(0)
+
+    def reset(self):
+        self._value = 0.0
+        self._normalizer = 0.0
+
+    def compute(self) -> float:
+        return self._value / self._normalizer
 
 class FederatedMetrics(object):
     '''
@@ -46,15 +71,19 @@ class FederatedMetrics(object):
         self.n_classes = n_classes
         self.device = device
         self.confusion_matrix = MulticlassConfusionMatrix(num_classes = n_classes).to(device)
+        self.ce_loss = FederatedLossObjective(
+            objective = lambda logits, target: torch.nn.functional.cross_entropy(logits, target).item()
+        )
         self.results = {
             'accuracy': None,
             'weighted_accuracy': None,
             'class_accuracy': None,
+            'ce_loss': None
         }
 
     def update(self, predicted: torch.Tensor, target: torch.Tensor):
         '''
-        Constructs the set of metrics for a set of clients to be evaluated.
+        Updates metrics.
 
         Parameters
         ----------
@@ -66,6 +95,23 @@ class FederatedMetrics(object):
         '''
 
         self.confusion_matrix.update(predicted, target)
+        self.ce_loss.update(predicted, target)
+
+    def update(self, predicted: torch.Tensor, target: torch.Tensor, loss: float):
+        '''
+        Updates metrics, with precomputed loss.
+
+        Parameters
+        ----------
+        predicted: torch.Tensor
+            Tensor [BATCH_SIZE, N_CLASSES] of predicted logits 
+            or [BATCH_SIZE] for predicted classes
+        device: torch.device
+            Tensor [BATCH_SIZE] of target labels
+        '''
+
+        self.confusion_matrix.update(predicted, target)
+        self.ce_loss.update(predicted, target, loss)
 
     def reset(self):
         '''
@@ -73,6 +119,7 @@ class FederatedMetrics(object):
         '''
 
         self.confusion_matrix.reset()
+        self.ce_loss.reset()
         # sets computed metrics to null
         for metric in self.results.keys():
             self.results[metric] = None
@@ -100,9 +147,12 @@ class FederatedMetrics(object):
         self.results['weighted_accuracy'] = self.results['class_accuracy'][mask].mean()
         # this is a unique measure given by the overall accuracy, not indicative for unbalanced data
         self.results['accuracy'] = n_correctly_predicted.sum() / n_samples
+        # cross entropy loss
+        self.results['ce_loss'] = self.ce_loss.compute()
         # loads results for retrieval
         for metric in self.results.keys():
-            self.results[metric] = self.results[metric].cpu().detach().numpy()
+            if torch.is_tensor(self.results[metric]):
+                self.results[metric] = self.results[metric].cpu().detach().numpy()
 
     def __getitem__(self, metric: str) -> Union[float, numpy.ndarray]:
         '''

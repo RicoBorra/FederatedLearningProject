@@ -9,6 +9,7 @@ from typing import Any
 import wandb
 
 from client import Client
+from utils.selection import UniformSelection, HybridSelection, PowerOfChoiceSelection
 from utils.evaluation import FederatedMetrics
 
 class Server(object):
@@ -44,23 +45,9 @@ class Server(object):
         self.algorithm = algorithm(model.state_dict())
         self.clients = clients
         self.evaluators = { group: FederatedMetrics() for group in clients.keys() }
-    
-    def select(self, group: str = 'training') -> list[Client]:
-        '''
-        Randomly sample (no replacement) `args.selected` clients from `group` to be trained.
-
-        Parameters
-        ----------
-        group: str
-            Group of clients from which to sample (training by default)
-
-        Returns
-        -------
-        list[Client]
-            List of sampled clients
-        '''
+        # appropriate client selection strategy
+        self.initialize_client_selection_strategy()
         
-        return random.sample(self.clients[group], k = self.args.selected)
 
     def run(self):
         '''
@@ -78,7 +65,7 @@ class Server(object):
             # progress bar is reinitialized to zero
             locals.reset()
             # selects 'args.selected' training clients and trains them
-            for client in self.select():
+            for client in self.selection.select():
                 # the local client update is returned and collected by the federated algorithm
                 client.train(self.algorithm, self.model)
                 # progress bar update in 1...args.selected
@@ -131,21 +118,27 @@ class Server(object):
         self.evaluators['validation'].compute()
         # log metrics on screen
         print(
+            # training metrics
             f"[+] accuracy: {100 * self.evaluators['training']['accuracy']:.3f}%, "
-            f"weighted accuracy: {100 * self.evaluators['training']['weighted_accuracy']:.3f}% (training)\n"
+            f"weighted accuracy: {100 * self.evaluators['training']['weighted_accuracy']:.3f}%, "
+            f"loss: {self.evaluators['training']['ce_loss']:.5f} (training)\n"
+            # validation metrics
             f"[+] accuracy: {100 * self.evaluators['validation']['accuracy']:.3f}%, "
-            f"weighted accuracy: {100 * self.evaluators['validation']['weighted_accuracy']:.3f}% (validation)"
+            f"weighted accuracy: {100 * self.evaluators['validation']['weighted_accuracy']:.3f}%, "
+            f"loss: {self.evaluators['validation']['ce_loss']:.5f} (validation)"
         )
         # log metrics remotely to weights and biases
         wandb.log({
             'round': round + 1,
             'accuracy/weighted/training': self.evaluators['training']['weighted_accuracy'],
-            'accuracy/overall/training': self.evaluators['training']['accuracy']
+            'accuracy/overall/training': self.evaluators['training']['accuracy'],
+            'loss/training': self.evaluators['training']['ce_loss']
         })
         wandb.log({
             'round': round + 1,
             'accuracy/weighted/validation': self.evaluators['validation']['weighted_accuracy'],
-            'accuracy/overall/validation': self.evaluators['validation']['accuracy']
+            'accuracy/overall/validation': self.evaluators['validation']['accuracy'],
+            'loss/validation': self.evaluators['validation']['ce_loss']
         })
 
     def save(self, round: int):
@@ -181,3 +174,27 @@ class Server(object):
         wandb.define_metric('accuracy/weighted/training', step_metric='round')
         wandb.define_metric('accuracy/overall/validation', step_metric='round')
         wandb.define_metric('accuracy/weighted/validation', step_metric='round')
+
+    def initialize_client_selection_strategy(self):
+        '''
+        Initializes client selection strategy according to simulation parameters.
+        '''
+
+        # uniform selection is default, all training clients are equally likely of being selected each round
+        if not self.args.selection or self.args.selection[0] == 'uniform':
+            self.selection = UniformSelection(server = self)
+        # a fraction of clients shares a certain probability, while remainng clients have the left probability
+        elif self.args.selection[0] == 'hybrid':
+            if len(self.args.selection) < 3:
+                self.selection = HybridSelection(server = self)
+            else:
+                self.selection = HybridSelection(server = self, probability = float(self.args.selection[1]), fraction = float(self.args.selection[2]))
+        # power of choice favors clients with a higher local loss among those with larger datasets
+        elif self.args.selection[0] == 'poc':
+            if len(self.args.selection) < 2:
+                self.selection = PowerOfChoiceSelection(server = self)
+            else:
+                self.selection = PowerOfChoiceSelection(server = self, d = int(self.args.selection[1]))
+        # invalid client selection strategy
+        else:
+            raise RuntimeError(f'unrecognized selection strategy \'{self.args.selection[0]}\', expected \'uniform\', \'hybrid\' or \'poc\'')

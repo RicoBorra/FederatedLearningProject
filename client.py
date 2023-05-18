@@ -1,4 +1,5 @@
 from copy import deepcopy
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Subset, DataLoader
@@ -90,11 +91,11 @@ class Client(object):
 
         # note that torch.no_grad is invoked a priori by the server
         # so no need here
-        logits, y, _, _, _ = self.evaluate(model)
+        loss, logits, y = self.evaluate(model)
         # performance metrics are updated with outputs and targets
-        metrics.update(logits, y)
+        metrics.update(logits, y, loss)
 
-    def evaluate(self, model: nn.Module) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
+    def evaluate(self, model: nn.Module) -> Tuple[float, torch.Tensor, torch.Tensor]:
         '''
         Evaluates central model performance on local client dataset.
 
@@ -111,8 +112,8 @@ class Client(object):
 
         Returns
         -------
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float, float]
-            Tuple with logits, y, predictions, loss and accuracy
+        Tuple[float, torch.Tensor, torch.Tensor, torch.Tensor, float]
+            Tuple with loss, logits, y, predictions and accuracy
         '''
 
         loader = DataLoader(self.dataset, batch_size = len(self.dataset))
@@ -121,11 +122,14 @@ class Client(object):
         y = y.to(self.device)
         # validation mode
         model.eval()
-        # note that torch.no_grad is invoked a priori by the server
-        # so no need here
-        logits, predictions, loss, accuracy = model.evaluate(x, y)
+        # note that torch.no_grad is invoked a priori by the server so no need here
+        logits, _, loss, _ = model.evaluate(x, y)
+
+        ## FIXME checks
+        # assert torch.isfinite(logits).all() and np.isfinite(loss)
+
         # yields outputs
-        return logits, y, predictions, loss, accuracy
+        return loss, logits, y
 
 def construct(user_datasets: dict[str, list[tuple[str, Subset]]], device: torch.device, args: Any) -> dict[str, list[Client]]:
     '''
