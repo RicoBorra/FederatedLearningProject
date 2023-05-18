@@ -232,7 +232,7 @@ if __name__ == '__main__':
     wandb.init(
         mode = 'online' if args.log else 'disabled',
         project = 'federated',
-        name = f"FEMNIST{'_NIID' if args.niid else '_IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{args.selection}_R{args.reduction}_A{args.algorithm}",
+        name = f"{'NIID' if args.niid else 'IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{args.selection}_R{args.reduction}_A{args.algorithm}",
         config = {
             'seed': args.seed,
             'dataset': args.dataset,
