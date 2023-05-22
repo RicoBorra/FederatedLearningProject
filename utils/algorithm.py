@@ -300,3 +300,65 @@ class FedProx(FedAvg):
             term += (weight - state[name].detach()).square().sum()
         # multiply using mu lagrangian
         return 0.5 * mu * term
+
+class FedYogi(FedAvg):
+    '''
+    This algorithm converges faster than plain vanilla FedAvg by exploiting
+    server learning rate and momentum when doing clients' updates aggregation.
+    Particularly, server side, FedYogi is adopted as optimizer.
+    '''
+
+    def __init__(
+            self, 
+            state: OrderedDict[str, torch.Tensor],
+            beta_1: float = 0.9,
+            beta_2: float = 0.99,
+            tau: float = 1e-4,
+            eta: float = 10 ** (-2.5)
+        ):
+        '''
+        Initializes the algorithm with an initial state.
+
+        Parameters
+        ----------
+        state: OrderedDict[str, torch.Tensor]
+            State dictionary of parameters obtained from a model
+        '''
+
+        super().__init__(state)
+        
+        self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+        self.eta = eta
+        self.tau = tau
+        self.delta = OrderedDict({ key: torch.zeros(weight.size(), device = weight.device) for key, weight in state.items() })
+        self.v = OrderedDict({ key: tau * tau * torch.ones(weight.size(), device = weight.device) for key, weight in state.items() })
+
+    def aggregate(self):
+        '''
+        Updates central model state by computing a weighted average of clients' states with their local datasets' sizes
+        and server learning rate.
+        '''
+        
+        # total size is the sum of the sizes from all contributing clients' datasets
+        n = sum([ size for _, size in self._updates ])
+        # for each architectural part of the state (e.g. 'fc.weight' or 'conv.bias'), the central state is obtained
+        # by averaging all clients state of the same part
+        # current delta given by differences of local weights with respect to intial round weights (state)
+        for key in self._state.keys():
+            # detach is invoked to enforce the detachment from autograd graph when making computations on the resulting object
+            delta_t = torch.sum(
+                torch.stack([ size / n * (weights[key].detach() - self._state[key]) for weights, size in self._updates ]),
+                dim = 0
+            )
+            # updates server delta
+            self.delta[key] = self.beta_1 * self.delta[key] + (1 - self.beta_1) * delta_t
+            # squared delta_t for caching
+            delta_t_squared = self.delta[key].square()
+            # velocity update
+            self.v[key] = self.v[key] - (1 - self.beta_2) * delta_t_squared * (self.v[key] - delta_t_squared).sign()
+            # weights state update
+            self._state[key] = self._state[key] + self.eta * self.delta[key] / (self.v[key].sqrt() + self.tau)
+        # all updates have been consumed, so they can be removed
+        self._updates.clear()

@@ -127,13 +127,14 @@ def get_arguments() -> Any:
     '''
     
     parser = argparse.ArgumentParser(
-        usage = 'run experiment on baseline FEMNIST dataset (federated, so decentralized) with a CNN architecture',
+        usage = 'run experiment on baseline FEMNIST dataset (federated, so decentralized) with a CNN architecture in a domain generalization setting',
         description = 'This program is used to log to Weights & Biases training and validation results\nevery epoch of training on the EMNIST dataset. The employed architecture is a\nconvolutional neural network with two convolutional blocks and a fully connected layer.\nStochastic gradient descent is used by default as optimizer along with cross entropy loss.',
         formatter_class = argparse.RawDescriptionHelpFormatter,
         epilog = "note: argument \'--scheduler\' accept different learning rate scheduling choices (\'exp\', \'onecycle\' or \'step\') followed by decaying factor and decaying period\n\n" \
             "examples:\n\n" \
-            ">>> python3 experiments/script.py --batch_size 256 --learning_rate 0.1 --momentum 0.9 --weight_decay 0.0001 --rounds 1000 --epochs 1 --scheduler exp 0.5 --algorithm fedyogi 0.9 0.99 1e-4 1e-2\n\n" \
+            ">>> python3 experiments/script.py --validation_domain_angle 75 --batch_size 256 --learning_rate 0.1 --momentum 0.9 --weight_decay 0.0001 --rounds 1000 --epochs 1 --scheduler exp 0.5 --algorithm fedyogi 0.9 0.99 1e-4 1e-2\n\n" \
             "This command executes the experiment using\n" \
+            " [+] validation domain angle: among rotated domains (0, 15, ..., 75) the one of 75 degrees counter clockwise rotation is selected for validation\n" \
             " [+] algorithm: fedyogi with beta_1 = 0.9, beta_2 = 0.99, tau = 1e-4 and eta = 1e-2\n" \
             " [+] batch size: 256\n" \
             " [+] learning rate: 0.1 decaying exponentially with multiplicative factor 0.5 every central round\n" \
@@ -143,13 +144,15 @@ def get_arguments() -> Any:
             " [+] running local client epoch: 1\n\n" \
             ">>> python3 experiments/script.py --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 1000 --scheduler step 0.75 3 --algorithm fedprox 0.25\n\n" \
             "This command executes the experiment using\n" \
+            " [+] validation domain angle: none, thus simple 80:20 split for training and validation clients without target domain validation\n" \
             " [+] algorithm: fedprox with mu parameter equal to 0.25\n" \
             " [+] batch size: 512\n" \
             " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 central rounds\n" \
             " [+] running server rounds for training and validation: 1000\n" \
             " [+] running local client epoch: 5\n\n" \
-            ">>> python3 experiments/script.py --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --scheduler onecycle 0.1 --algorithm fedavg --selection poc 30 --checkpoint 5 ./saved\n\n" \
+            ">>> python3 experiments/script.py --validation_domain_angle 30 --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --scheduler onecycle 0.1 --algorithm fedavg --selection poc 30 --checkpoint 5 ./saved\n\n" \
             "This command executes the experiment using\n" \
+            " [+] validation domain angle: among rotated domains (0, 15, ..., 75) the one of 30 degrees counter clockwise rotation is selected for validation\n" \
             " [+] algorithm: fedavg\n" \
             " [+] checkpoint: saves model parameters every 5 rounds in ./saved\n" \
             " [+] dataset distribution: niid (unbalanced across clients)\n" \
@@ -164,6 +167,7 @@ def get_arguments() -> Any:
     parser.add_argument('--dataset', type = str, choices = ['femnist'], default = 'femnist', help = 'dataset name')
     parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default). Only on FEMNIST dataset.')
     parser.add_argument('--model', type = str, choices = ['logreg', 'cnn'], default = 'cnn', help = 'model name')
+    parser.add_argument('--validation_domain_angle', type = int, choices = [ None, 0, 15, 30, 45, 60, 75 ], default = None, help = 'rotated domain of clients which is selected for validation')
     parser.add_argument('--rounds', type = int, help = 'number of rounds')
     parser.add_argument('--epochs', type = int, help = 'number of local epochs')
     parser.add_argument('--selected', type = int, help = 'number of clients trained per round')
@@ -188,6 +192,7 @@ if __name__ == '__main__':
     # random seed and more importantly deterministic algorithm versions are set
     set_seed(args.seed)
     # model is compiled to CPU and operates on GPU
+    print(f'[+] initializing experiment in a domain generalization setting (rotated images)')
     print(f'[+] initializing model... ', end = '', flush = True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # FIXME no scheduling implemented in federated model
@@ -196,13 +201,17 @@ if __name__ == '__main__':
     print('done')
     # federated datasets are shared among training and testing clients
     print('[+] loading datasets... ', end = '', flush = True)
+    angles = [ 0, 15, 30, 45, 60, 75 ]
     datasets = femnist.load(
         directory = os.path.join(
             'data', 
             'femnist', 
             'compressed', 
             'niid' if args.niid else 'iid'
-        )
+        ),
+        n_rotated = 1000,
+        angles = angles,
+        validation_domain_angle = args.validation_domain_angle
     )
     print('done')
     # client construction by dividing them in three groups (training, validation, testing)
@@ -222,6 +231,8 @@ if __name__ == '__main__':
     print('[+] running with configuration')
     print(f'  [-] seed: {args.seed}')
     print(f"  [-] distribution: {'niid' if args.niid else 'iid'}")
+    print(f"  [-] angles: {' '.join([ str(a) for a in angles])}")
+    print(f"  [-] validation domain angle: {args.validation_domain_angle if args.validation_domain_angle else 'none'}")
     print(f'  [-] batch size: {args.batch_size}')
     print(f'  [-] learning rate: {args.learning_rate}')
     print(f'  [-] momentum: {args.momentum}')
@@ -240,10 +251,11 @@ if __name__ == '__main__':
     wandb.init(
         mode = 'online' if args.log else 'disabled',
         project = 'federated',
-        name = f"{'NIID' if args.niid else 'IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{args.selection}_R{args.reduction}_A{args.algorithm}",
+        name = f"DG_{'NIID' if args.niid else 'IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{args.selection}_R{args.reduction}_A{args.algorithm}",
         config = {
             'seed': args.seed,
             'dataset': args.dataset,
+            'validation_domain_angle': args.validation_domain_angle,
             'niid': args.niid,
             'model': args.model,
             'rounds': args.rounds,
