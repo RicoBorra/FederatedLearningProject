@@ -78,7 +78,7 @@ def load_rotated_emnist(
         validation_domain_angle: int
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     # here datasets of each group are fragment across multiple groups
-    federated_datasets = femnist.load(
+    federated_datasets = femnist.load_with_rotated_domains(
         directory = os.path.join(
             'data', 
             'femnist', 

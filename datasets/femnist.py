@@ -181,7 +181,7 @@ class RotatedFemnistSubset(Subset):
         # image and label
         return x, y
     
-def load(
+def load_with_rotated_domains(
         directory: str, 
         n_rotated: int, 
         angles: Sequence[int], 

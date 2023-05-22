@@ -202,7 +202,7 @@ if __name__ == '__main__':
     # federated datasets are shared among training and testing clients
     print('[+] loading datasets... ', end = '', flush = True)
     angles = [ 0, 15, 30, 45, 60, 75 ]
-    datasets = femnist.load(
+    datasets = femnist.load_with_rotated_domains(
         directory = os.path.join(
             'data', 
             'femnist', 
