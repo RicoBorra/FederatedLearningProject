@@ -247,7 +247,7 @@ if __name__ == '__main__':
     wandb.init(
         mode = 'online' if args.log else 'disabled',
         project = 'centralized',
-        name = f"DG_EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
+        name = f"DG_EMNIST{'' if args.validation_domain_angle is None else f'_VA{args.validation_domain_angle}'}_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
         config = {
             'seed': args.seed,
             'dataset': 'emnist',
