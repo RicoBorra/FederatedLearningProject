@@ -16,7 +16,7 @@ import utils.algorithm as algorithm
 import utils.reduction as reduction
 from models.cnn import CNN
 from models.logistic_regression import LogisticRegression
-from models.variational_classifier import VariationalClassifierNotLogVar
+from models.variational_classifier import VariationalClassifier, VariationalClassifierNotLogVar, DeterministicClassifier
 import client
 import server
 
@@ -73,7 +73,7 @@ def initialize_model(args: Any) -> torch.nn.Module:
     # logreg is a plain logistic regression algorithm optimized using SGD
     # cnn is a 2D convolutional neural network
     if args.algorithm[0] == 'fedsr':
-        return VariationalClassifierNotLogVar(
+        return DeterministicClassifier(
             num_classes = 62,
             num_representation_outputs = 64 if len(args.algorithm) < 2 else int(args.algorithm[1]),
             beta_l2n = 1e-2 if len(args.algorithm) < 3 else float(args.algorithm[2]),

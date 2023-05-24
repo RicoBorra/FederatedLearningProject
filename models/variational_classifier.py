@@ -1,4 +1,5 @@
 import torch
+import torchvision.models as models
 import torch.nn as nn
 from typing import Tuple
 
@@ -105,7 +106,7 @@ class VariationalClassifier(nn.Module):
 
         loss = ce_loss + self.beta_l2n * l2_regularization + self.beta_cmi * kl_regularization
 
-        # print(f'{ce_loss:.5f}, {l2_regularization:.5f}, {kl_regularization:.5f} -> {loss:.5f}')
+        # if self.training: print(f'{ce_loss:.5f}, {l2_regularization:.5f}, {kl_regularization:.5f} -> {loss:.5f}')
 
         return loss
     
@@ -160,6 +161,8 @@ class VariationalEncoderNotLogVar(nn.Module):
             # expects variance to be positive
             nn.Softplus()
         )
+        # FIXME scale factor
+        self.scale_factor = nn.Parameter(torch.ones([]))
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
@@ -176,8 +179,7 @@ class VariationalEncoderNotLogVar(nn.Module):
         else:
             z = mean
         
-        return z, mean, variance
-        
+        return z, mean * self.scale_factor, variance * self.scale_factor
 
 class VariationalClassifierNotLogVar(nn.Module):
 
@@ -241,7 +243,7 @@ class VariationalClassifierNotLogVar(nn.Module):
 
         loss = ce_loss + self.beta_l2n * l2_regularization + self.beta_cmi * kl_regularization
 
-        # print(f'{ce_loss:.5f}, {l2_regularization:.5f}, {kl_regularization:.5f} -> {loss:.5f}')
+        # if self.training: print(f'{ce_loss:.5f}, {l2_regularization:.5f}, {kl_regularization:.5f} -> {loss:.5f}')
 
         return loss
     
@@ -264,5 +266,97 @@ class VariationalClassifierNotLogVar(nn.Module):
         
         logits, z, mean, variance = self(x)
         loss = self.criterion(logits, y, z, mean, variance)
+        predicted = logits.argmax(1)
+        return logits, predicted, loss.item(), (predicted == y).sum() / y.size(0)
+
+##### NOTE DETERMINISTIC VERSION, NO KL OR TRICK #########  
+
+class DeterministicClassifier(nn.Module):
+
+    def __init__(
+        self, 
+        num_representation_outputs: int, 
+        num_classes: int,
+        beta_l2n: float = 1e-2,
+        beta_cmi: float = None
+    ):
+        super().__init__()
+        # number of outputs
+        self.num_classes = num_classes
+        # constructs simple representation z sampled from p(z|x)
+        self.encoder = nn.Sequential(
+            # first convolutional block of 32 channels, max pooling and relu
+            nn.Conv2d(in_channels = 1, out_channels = 32, kernel_size = (5, 5), padding = 'same'),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = 2),
+            nn.ReLU(),
+            # second convolutional block of 64 channels, max pooling and relu
+            nn.Conv2d(in_channels = 32, out_channels = 64, kernel_size = (5, 5), padding = 'same'),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = 2),
+            nn.ReLU(),
+            # transform the two dimensional activation maps into one flatten array
+            nn.Flatten(),
+            # single output
+            nn.Linear(in_features = 7 * 7 * 64, out_features = num_representation_outputs)
+
+            # first fully connected layer of 2048 outputs
+            # nn.Linear(in_features = 7 * 7 * 64, out_features = 2048),
+            # nn.ReLU(),
+            # second and last fully connected layer
+            # nn.Linear(in_features = 2048, out_features = num_representation_outputs)
+        )
+        # classifier which is trained on (z, y) pairs
+        self.classifier = nn.Linear(in_features = num_representation_outputs, out_features = num_classes)
+        # lagrangians of regularizers
+        self.beta_l2n = beta_l2n
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        
+        z = self.encoder(x)
+
+        logits = self.classifier(z)
+
+        return logits, z
+
+    def step(self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer) -> tuple[torch.Tensor, float]:
+        logits, z = self(x)
+
+        loss = self.criterion(logits, y, z)
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        optimizer.step()
+
+        return logits, loss.item()
+    
+    def criterion(self, logits, y, z) -> torch.Tensor:
+        ce_loss = nn.functional.cross_entropy(logits, y, reduction = 'mean')
+
+        l2_regularization = z.square().sum(dim = 1).mean()
+
+        loss = ce_loss + self.beta_l2n * l2_regularization
+
+        # if self.training: print(f'{ce_loss:.5f}, {l2_regularization:.5f} -> {loss:.5f}')
+
+        return loss
+    
+    def evaluate(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, float]:
+        '''
+        Evaluates model on a single batch of data, no gradient or updates are computed.
+
+        Parameters
+        ----------
+        x: torch.Tensor
+            Input images
+        y: torch.Tensor
+            Input target labels
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor, float]
+            Linear logits, predicted labels, reduced loss and accuracy
+        '''
+        
+        logits, z = self(x)
+        loss = self.criterion(logits, y, z)
         predicted = logits.argmax(1)
         return logits, predicted, loss.item(), (predicted == y).sum() / y.size(0)
