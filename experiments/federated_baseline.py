@@ -1,4 +1,5 @@
 import argparse
+from functools import partial
 import numpy as np
 import os
 import random
@@ -75,7 +76,7 @@ def initialize_model(args: Any) -> torch.nn.Module:
             loss_reduction = loss_reduction
         ) 
     elif args.model == 'logreg':
-        LogisticRegression(
+        return LogisticRegression(
             num_inputs = 784, 
             num_classes = 62,
             loss_reduction = loss_reduction
@@ -97,8 +98,6 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
     algorithm.FedAlgorithm
         Federated learning algorithm
     '''
-
-    from functools import partial
 
     if not args.algorithm or args.algorithm[0] == 'fedavg':
         return algorithm.FedAvg
@@ -162,21 +161,22 @@ def get_arguments() -> Any:
     
     parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
     parser.add_argument('--dataset', type = str, choices = ['femnist'], default = 'femnist', help = 'dataset name')
-    parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default). Only on FEMNIST dataset.')
+    parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default), only on FEMNIST dataset')
     parser.add_argument('--model', type = str, choices = ['logreg', 'cnn'], default = 'cnn', help = 'model name')
     parser.add_argument('--rounds', type = int, help = 'number of rounds')
     parser.add_argument('--epochs', type = int, help = 'number of local epochs')
     parser.add_argument('--selected', type = int, help = 'number of clients trained per round')
     parser.add_argument('--selection', metavar = ('selection', 'params'), type = str, nargs = '+', default = ['uniform'], help = 'criterion for selecting partecipating clients each round, like \'uniform\' or \'hybrid\' or \'poc\'')
-    parser.add_argument('--reduction', type = str, default = 'mean', choices = ['mean', 'sum', 'hnm'], help = 'Hard negative mining or mean or sum loss reduction')
+    parser.add_argument('--reduction', type = str, default = 'mean', choices = ['mean', 'sum', 'hnm'], help = 'hard negative mining or mean or sum loss reduction')
     parser.add_argument('--learning_rate', type = float, default = 0.05, help = 'learning rate')
     parser.add_argument('--batch_size', type = int, default = 64, help = 'batch size')
     parser.add_argument('--weight_decay', type = float, default = 0, help = 'weight decay')
     parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
-    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'Learning rate decay scheduling, like \'step\' or \'exp\' or \'onecycle\'')
-    parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'Federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
+    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling, like \'step\' or \'exp\' or \'onecycle\'')
+    parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
     parser.add_argument('--evaluation', type = int, default = 10, help = 'evaluation interval of training and validation set')
     parser.add_argument('--evaluation_fraction', type = float, default = 0.25, help = 'fraction of clients to be evaluated from training and validation set')
+    parser.add_argument('--testing', action = 'store_true', default = False, help = 'run final evaluation on unseen testing clients')
     parser.add_argument('--checkpoint', metavar = ('interval', 'params'), type = str, nargs = '+', default = None, help = 'Checkpoint after rounds interval and directory')
     parser.add_argument('--log', action = 'store_true', default = False, help = 'whether or not to log to weights & biases')
 
@@ -234,6 +234,7 @@ if __name__ == '__main__':
     print(f'  [-] clients selected: {args.selected}')
     print(f"  [-] selection strategy: {' '.join(args.selection)}")
     print(f'  [-] fraction of clients evaluated: {args.evaluation_fraction}')
+    print(f'  [-] final testing: {args.testing}')
     print(f"  [-] checkpoint: {args.checkpoint if args.checkpoint else 'none'}")
     print(f'  [-] remote log enabled: {args.log}')
     # initialize configuration for weights & biases log

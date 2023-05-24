@@ -219,6 +219,7 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
         print(f'  [-] loss: {validation_loss:.3f}, score: {validation_score:.3f} (validation)')
     # progress bar for testing
     testing_progress = tqdm.tqdm(total = len(testing_loader), desc = '  [-] testing')
+    testing_loss, testing_score = 0, 0
     # actually testing clients are not used in this context but just for final evaluation
     # enable validation mode
     model.eval()

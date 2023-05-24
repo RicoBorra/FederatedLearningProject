@@ -88,9 +88,14 @@ class Server(object):
                     self.save(round)
         # final evaluation
         with torch.no_grad():
-            self.evaluate(self.args.rounds, fraction = self.args.evaluation_fraction)
+            # eventually involves clients from `testing`
+            self.evaluate(
+                self.args.rounds, 
+                fraction = self.args.evaluation_fraction, 
+                testing = getattr(self.args, 'testing', False)
+            )
 
-    def evaluate(self, round: int, fraction: float):
+    def evaluate(self, round: int, fraction: float, testing: bool = False):
         '''
         Evaluates performance of central model on `training` and `validation` clients and logs
         performance metrics.
@@ -100,7 +105,10 @@ class Server(object):
         round: int
             Training round of the server
         fraction: float
-            Fraction of clients from each group to be evaluated (1.0 by default)  
+            Fraction of clients from each group to be evaluated (1.0 by default)
+        testing: bool
+            Tells whether to run evaluation on the original hold out clients of
+            `testing` group (False by default)
         '''
 
         # FIXME subset evaluation
@@ -140,6 +148,31 @@ class Server(object):
             'accuracy/overall/validation': self.evaluators['validation']['accuracy'],
             'loss/validation': self.evaluators['validation']['ce_loss']
         })
+        # eventually this is executed at the end of the entire simulation in order to
+        # understand how well the central model performs on new unseen `testing` clients
+        # completely disjoint with respect to train `training` and `validation` clients
+        # NOTE all clients, not just a fraction, from `testing` group are evaluated
+        if testing:
+            print('[+] final evaluation on all unseen testing clients', end = '')
+            # evaluation of clients from 'testing' group
+            for client in tqdm(self.clients['testing'], desc = '[+] evaluating testing clients'):
+                client.validate(self.model, self.evaluators['testing'])
+            # compute metrics at the end of the round
+            self.evaluators['testing'].compute()
+            # log metrics on screen
+            print(
+                # testing metrics
+                f"[+] accuracy: {100 * self.evaluators['testing']['accuracy']:.3f}%, "
+                f"weighted accuracy: {100 * self.evaluators['testing']['weighted_accuracy']:.3f}%, "
+                f"loss: {self.evaluators['testing']['ce_loss']:.5f} (validation)"
+            )
+            # log metrics remotely to weights and biases
+            wandb.log({
+                'round': round + 1,
+                'accuracy/weighted/testing': self.evaluators['testing']['weighted_accuracy'],
+                'accuracy/overall/testing': self.evaluators['testing']['accuracy'],
+                'loss/testing': self.evaluators['testing']['ce_loss']
+            })
 
     def save(self, round: int):
         '''

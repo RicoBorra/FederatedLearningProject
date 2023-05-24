@@ -1,4 +1,5 @@
 import argparse
+from functools import partial
 import numpy as np
 import os
 import random
@@ -15,6 +16,7 @@ import utils.algorithm as algorithm
 import utils.reduction as reduction
 from models.cnn import CNN
 from models.logistic_regression import LogisticRegression
+from models.variational_classifier import VariationalClassifierNotLogVar
 import client
 import server
 
@@ -67,15 +69,23 @@ def initialize_model(args: Any) -> torch.nn.Module:
         loss_reduction = reduction.SumReduction()
     else:
         loss_reduction = reduction.MeanReduction()
+    # variational cnn is instantiated in case of fedsr
     # logreg is a plain logistic regression algorithm optimized using SGD
     # cnn is a 2D convolutional neural network
-    if args.model == 'cnn':
+    if args.algorithm[0] == 'fedsr':
+        return VariationalClassifierNotLogVar(
+            num_classes = 62,
+            num_representation_outputs = 64 if len(args.algorithm) < 2 else int(args.algorithm[1]),
+            beta_l2n = 1e-2 if len(args.algorithm) < 3 else float(args.algorithm[2]),
+            beta_cmi = 5e-4 if len(args.algorithm) < 4 else float(args.algorithm[3])
+        )
+    elif args.model == 'cnn':
         return CNN(
             num_classes = 62,
             loss_reduction = loss_reduction
         ) 
     elif args.model == 'logreg':
-        LogisticRegression(
+        return LogisticRegression(
             num_inputs = 784, 
             num_classes = 62,
             loss_reduction = loss_reduction
@@ -98,9 +108,7 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
         Federated learning algorithm
     '''
 
-    from functools import partial
-
-    if not args.algorithm or args.algorithm[0] == 'fedavg':
+    if not args.algorithm or args.algorithm[0] in [ 'fedavg', 'fedsr' ]:
         return algorithm.FedAvg
     elif args.algorithm[0] == 'fedprox':
         return partial(algorithm.FedProx, mu = float(args.algorithm[1])) if len(args.algorithm) > 1 else algorithm.FedProx
@@ -160,27 +168,39 @@ def get_arguments() -> Any:
             " [+] selection strategy: power of choice with candidate set of 30 clients\n" \
             " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
             " [+] running server rounds for training and validation: 500\n" \
+            " [+] running local client epoch: 5\n\n" \
+            ">>> python3 experiments/script.py --validation_domain_angle 30 --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --scheduler onecycle 0.1 --algorithm fedsr 64 1e-2 5e-4 --selection poc 30 --checkpoint 5 ./saved\n\n" \
+            "This command executes the experiment using\n" \
+            " [+] validation domain angle: among rotated domains (0, 15, ..., 75) the one of 30 degrees counter clockwise rotation is selected for validation\n" \
+            " [+] algorithm: fedsr using 64 as simple representation dimension and beta_l2n = 1e-2 and beta_cmi = 5e-4\n" \
+            " [+] checkpoint: saves model parameters every 5 rounds in ./saved\n" \
+            " [+] dataset distribution: niid (unbalanced across clients)\n" \
+            " [+] batch size: 512\n" \
+            " [+] selection strategy: power of choice with candidate set of 30 clients\n" \
+            " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
+            " [+] running server rounds for training and validation: 500\n" \
             " [+] running local client epoch: 5"
     )
     
     parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
     parser.add_argument('--dataset', type = str, choices = ['femnist'], default = 'femnist', help = 'dataset name')
-    parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default). Only on FEMNIST dataset.')
+    parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default), only on FEMNIST dataset')
     parser.add_argument('--model', type = str, choices = ['logreg', 'cnn'], default = 'cnn', help = 'model name')
     parser.add_argument('--validation_domain_angle', type = int, choices = [ None, 0, 15, 30, 45, 60, 75 ], default = None, help = 'rotated domain of clients which is selected for validation')
     parser.add_argument('--rounds', type = int, help = 'number of rounds')
     parser.add_argument('--epochs', type = int, help = 'number of local epochs')
     parser.add_argument('--selected', type = int, help = 'number of clients trained per round')
     parser.add_argument('--selection', metavar = ('selection', 'params'), type = str, nargs = '+', default = ['uniform'], help = 'criterion for selecting partecipating clients each round, like \'uniform\' or \'hybrid\' or \'poc\'')
-    parser.add_argument('--reduction', type = str, default = 'mean', choices = ['mean', 'sum', 'hnm'], help = 'Hard negative mining or mean or sum loss reduction')
+    parser.add_argument('--reduction', type = str, default = 'mean', choices = ['mean', 'sum', 'hnm'], help = 'hard negative mining or mean or sum loss reduction')
     parser.add_argument('--learning_rate', type = float, default = 0.05, help = 'learning rate')
     parser.add_argument('--batch_size', type = int, default = 64, help = 'batch size')
     parser.add_argument('--weight_decay', type = float, default = 0, help = 'weight decay')
     parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
-    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'Learning rate decay scheduling, like \'step\' or \'exp\' or \'onecycle\'')
-    parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'Federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
+    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling, like \'step\' or \'exp\' or \'onecycle\'')
+    parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'federated learning algorithm, like \'fedavg\' (default), \'fedprox\' or \'fedsr\'')
     parser.add_argument('--evaluation', type = int, default = 10, help = 'evaluation interval of training and validation set')
     parser.add_argument('--evaluation_fraction', type = float, default = 0.25, help = 'fraction of clients to be evaluated from training and validation set')
+    parser.add_argument('--testing', action = 'store_true', default = False, help = 'run final evaluation on unseen testing clients')
     parser.add_argument('--checkpoint', metavar = ('interval', 'params'), type = str, nargs = '+', default = None, help = 'Checkpoint after rounds interval and directory')
     parser.add_argument('--log', action = 'store_true', default = False, help = 'whether or not to log to weights & biases')
 
@@ -245,6 +265,7 @@ if __name__ == '__main__':
     print(f'  [-] clients selected: {args.selected}')
     print(f"  [-] selection strategy: {' '.join(args.selection)}")
     print(f'  [-] fraction of clients evaluated: {args.evaluation_fraction}')
+    print(f'  [-] final testing: {args.testing}')
     print(f"  [-] checkpoint: {args.checkpoint if args.checkpoint else 'none'}")
     print(f'  [-] remote log enabled: {args.log}')
     # initialize configuration for weights & biases log
