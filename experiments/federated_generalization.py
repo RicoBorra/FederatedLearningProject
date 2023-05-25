@@ -16,7 +16,7 @@ import utils.algorithm as algorithm
 import utils.reduction as reduction
 from models.cnn import CNN
 from models.logistic_regression import LogisticRegression
-from models.variational_classifier import VariationalClassifier, VariationalClassifierNotLogVar, DeterministicClassifier
+from models.sr import SimpleRepresentationClassifier
 import client
 import server
 
@@ -73,11 +73,11 @@ def initialize_model(args: Any) -> torch.nn.Module:
     # logreg is a plain logistic regression algorithm optimized using SGD
     # cnn is a 2D convolutional neural network
     if args.algorithm[0] == 'fedsr':
-        return DeterministicClassifier(
+        return SimpleRepresentationClassifier(
             num_classes = 62,
-            num_representation_outputs = 64 if len(args.algorithm) < 2 else int(args.algorithm[1]),
-            beta_l2n = 1e-2 if len(args.algorithm) < 3 else float(args.algorithm[2]),
-            beta_cmi = 5e-4 if len(args.algorithm) < 4 else float(args.algorithm[3])
+            num_latent_features = 64 if len(args.algorithm) < 2 else int(args.algorithm[1]),
+            beta_l2 = 1e-2 if len(args.algorithm) < 3 else float(args.algorithm[2]),
+            beta_kl = 1e-3 if len(args.algorithm) < 4 else float(args.algorithm[3])
         )
     elif args.model == 'cnn':
         return CNN(
@@ -108,8 +108,12 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
         Federated learning algorithm
     '''
 
-    if not args.algorithm or args.algorithm[0] in [ 'fedavg', 'fedsr' ]:
+    if not args.algorithm or args.algorithm[0] == 'fedavg':
         return algorithm.FedAvg
+    elif args.algorithm[0] == 'fedsr':
+        return algorithm.FedAvg
+    # if not args.algorithm or args.algorithm[0] in [ 'fedavg', 'fedsr' ]:
+    #     return algorithm.FedAvg
     elif args.algorithm[0] == 'fedprox':
         return partial(algorithm.FedProx, mu = float(args.algorithm[1])) if len(args.algorithm) > 1 else algorithm.FedProx
     elif args.algorithm[0] == 'fedyogi':

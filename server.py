@@ -114,12 +114,14 @@ class Server(object):
         # FIXME subset evaluation
         # FIXME remove 50
         validators = random.sample(self.clients['training'], k = math.floor(fraction * len(self.clients['training']))) if fraction < 1.0 else self.clients['training']
+        # validators = random.sample(self.clients['training'], k = 100)
         # evaluation of clients from 'training' group
         for client in tqdm(validators, desc = '[+] evaluating training clients'):
             client.validate(self.model, self.evaluators['training'])
         # FIXME subset evaluation
         # FIXME remove 50
         validators = random.sample(self.clients['validation'], k = math.floor(fraction * len(self.clients['validation']))) if fraction < 1.0 else self.clients['validation']
+        # validators = random.sample(self.clients['validation'], k = 100)
         # evaluation of clients from 'validation' group
         for client in tqdm(validators, desc = '[+] evaluating validation clients'):
             client.validate(self.model, self.evaluators['validation'])

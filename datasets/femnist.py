@@ -133,7 +133,7 @@ class RotatedFemnistSubset(Subset):
     a counter clockwise rotation of some angle.
     '''
 
-    def __init__(self, dataset: Dataset, indices: Sequence, angle: int):
+    def __init__(self, dataset: Dataset, indices: Sequence, angle: int, normalize: bool = True):
         '''
         Constructs a client subset whose images are rotated counter clockwise of `angle`.
         
@@ -145,6 +145,8 @@ class RotatedFemnistSubset(Subset):
             Indices of original dataset corresponding to current client
         angle: int
             Rotation angle for this client
+        normalize: bool = True
+            Whether to normalize (standardize) images (True by default)
         '''
         
         super().__init__(dataset, indices)
@@ -152,6 +154,11 @@ class RotatedFemnistSubset(Subset):
         self.angle = angle
         # apply transformation (rotation) and fills around spaces with whites
         self.transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Lambda(lambda x: transforms.functional.rotate(x, angle = float(self.angle), fill = 255)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ]) if normalize else transforms.Compose([
             transforms.ToPILImage(),
             transforms.Lambda(lambda x: transforms.functional.rotate(x, angle = float(self.angle), fill = 255)),
             transforms.ToTensor()
@@ -227,8 +234,8 @@ def load_with_rotated_domains(
     training_frame.reset_index(inplace = True)
     testing_frame.reset_index(inplace = True)
     # builds whole datasets and three groups of clients (and corresponding subsets)
-    training_data = Femnist(training_frame)
-    testing_data = Femnist(testing_frame)
+    training_data = Femnist(training_frame, normalize = False)
+    testing_data = Femnist(testing_frame, normalize = False)
     user_datasets = { 'training': [], 'validation': [], 'testing': [] }
     # clients sampled for being rotated
     rotated_clients_names = np.random.choice(training_frame['user'].unique(), size = n_rotated, replace = False)
@@ -244,7 +251,7 @@ def load_with_rotated_domains(
         for name, group in training_frame.groupby('user'):
             if name in rotated_clients_angles:
                 # client belongs to a rotated domain
-                subset = RotatedFemnistSubset(training_data, group.index.values, angle = rotated_clients_angles[name])
+                subset = RotatedFemnistSubset(training_data, group.index.values, angle = rotated_clients_angles[name], normalize = True)
             else:
                 # client has not been selected for rotation
                 subset = Subset(training_data, group.index.values)
@@ -262,7 +269,7 @@ def load_with_rotated_domains(
                 # angle is the rotation angle for this specifc client
                 angle = rotated_clients_angles[name]
                 # rotated subset
-                subset = RotatedFemnistSubset(training_data, group.index.values, angle = angle)
+                subset = RotatedFemnistSubset(training_data, group.index.values, angle = angle, normalize = True)
                 # if the rotation anfle of this client corresponds to the validation domain angle
                 # then this client is moved to validation set instead of training set
                 if angle == validation_domain_angle:
