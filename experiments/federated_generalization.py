@@ -76,7 +76,7 @@ def initialize_model(args: Any) -> torch.nn.Module:
         return SimpleRepresentationClassifier(
             num_classes = 62,
             num_latent_features = 64 if len(args.algorithm) < 2 else int(args.algorithm[1]),
-            beta_l2 = 1e-2 if len(args.algorithm) < 3 else float(args.algorithm[2]),
+            beta_l2 = 1e-3 if len(args.algorithm) < 3 else float(args.algorithm[2]),
             beta_kl = 1e-3 if len(args.algorithm) < 4 else float(args.algorithm[3])
         )
     elif args.model == 'cnn':
@@ -108,12 +108,8 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
         Federated learning algorithm
     '''
 
-    if not args.algorithm or args.algorithm[0] == 'fedavg':
+    if not args.algorithm or args.algorithm[0] in [ 'fedavg', 'fedsr' ]:
         return algorithm.FedAvg
-    elif args.algorithm[0] == 'fedsr':
-        return algorithm.FedAvg
-    # if not args.algorithm or args.algorithm[0] in [ 'fedavg', 'fedsr' ]:
-    #     return algorithm.FedAvg
     elif args.algorithm[0] == 'fedprox':
         return partial(algorithm.FedProx, mu = float(args.algorithm[1])) if len(args.algorithm) > 1 else algorithm.FedProx
     elif args.algorithm[0] == 'fedyogi':
