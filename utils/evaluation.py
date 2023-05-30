@@ -4,28 +4,81 @@ import torch
 from torchmetrics.classification import MulticlassConfusionMatrix
 
 class FederatedLossObjective(object):
+    '''
+    This metric represents a loss objective in a federated scenario, where
+    each clients contributes to the loss according to its local data amount.
+    '''
 
     def __init__(
         self,
         objective: Callable[[torch.Tensor, torch.Tensor], float]
     ):
+        '''
+        Constructs a federated loss objective.
+        
+        Parameters
+        ----------
+        objective: Callable[[torch.Tensor, torch.Tensor], float]
+            Closure that returns a float loss value over some logits and labels
+        '''
+        
+        # objective loss function
         self.objective = objective
+        # total loss value
         self._value = 0.0
+        # total sum of clients' datasets sizes
         self._normalizer = 0.0
 
     def update(self, outputs: torch.Tensor, target: torch.Tensor):
+        '''
+        Updates internal state with clients' local loss.
+
+        Parameters
+        ----------
+        outputs: torch.Tensor
+            Output logits of local clients' model
+        target: torch.Tensor
+            Class labels of local client's data
+        '''
+
         self._value += target.size(0) * self.objective(outputs, target)
         self._normalizer += target.size(0)
 
     def update(self, outputs: torch.Tensor, target: torch.Tensor, loss: float):
+        '''
+        Updates internal state with clients' precomputed local loss.
+
+        Parameters
+        ----------
+        outputs: torch.Tensor
+            Output logits of local clients' model (not used here)
+        target: torch.Tensor
+            Class labels of local client's data
+        loss: float
+            Precomputed local loss
+        '''
+
         self._value += target.size(0) * loss
         self._normalizer += target.size(0)
 
     def reset(self):
+        '''
+        Resets internal state to start accumulation of local losses again.
+        '''
+        
         self._value = 0.0
         self._normalizer = 0.0
 
     def compute(self) -> float:
+        '''
+        Computes federated loss.
+
+        Returns
+        -------
+        float
+            Federated objective loss function value
+        '''
+        
         return self._value / self._normalizer
 
 class FederatedMetrics(object):
