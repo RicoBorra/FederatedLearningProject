@@ -38,7 +38,7 @@ class FedAlgorithm(ABC):
     >>> updated_state = algorithm.state
     '''
 
-    def __init__(self, state: OrderedDict[str, torch.Tensor]):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], scheduler: torch.optim.lr_scheduler.LRScheduler):
         '''
         Initializes the algorithm with an initial state.
 
@@ -46,9 +46,12 @@ class FedAlgorithm(ABC):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
+        scheduler: torch.optim.lr_scheduler.LRScheduler
+            Learning rate scheduler over multiple server rounds
         '''
         
         self._state = deepcopy(state)
+        self._scheduler = scheduler
 
     @property
     def state(self) -> OrderedDict[str, torch.Tensor]:
@@ -90,6 +93,19 @@ class FedAlgorithm(ABC):
         '''
 
         raise NotImplementedError()
+    
+    @property
+    def lr(self) -> float:
+        '''
+        Returns learning rate used by client at current round.
+
+        Returns
+        -------
+        float
+            Current learning rate
+        '''
+
+        return self._scheduler.get_last_lr()[0]
 
 class FedAvg(FedAlgorithm):
     '''
@@ -98,7 +114,7 @@ class FedAvg(FedAlgorithm):
     sizes as weights.
     '''
 
-    def __init__(self, state: OrderedDict[str, torch.Tensor]):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], scheduler: torch.optim.lr_scheduler.LRScheduler):
         '''
         Initializes the algorithm with an initial state.
 
@@ -106,9 +122,11 @@ class FedAvg(FedAlgorithm):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
+        scheduler: torch.optim.lr_scheduler.LRScheduler
+            Learning rate scheduler over multiple server rounds
         '''
 
-        super().__init__(state)
+        super().__init__(state, scheduler)
         
         self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
 
@@ -141,7 +159,7 @@ class FedAvg(FedAlgorithm):
         # weight decay is L2 (ridge) penalty
         optimizer = torch.optim.SGD(
                 model.parameters(), 
-                lr = client.args.learning_rate, 
+                lr = self.lr, 
                 momentum = client.args.momentum, 
                 weight_decay = client.args.weight_decay
         )
@@ -184,6 +202,9 @@ class FedAvg(FedAlgorithm):
             )
         # all updates have been consumed, so they can be removed
         self._updates.clear()
+        # aggregation means the end of current round, so we can update clients learning rate
+        self._scheduler.optimizer.step()
+        self._scheduler.step()
 
 class FedProx(FedAvg):
     '''
@@ -192,7 +213,7 @@ class FedProx(FedAvg):
     sizes as weights and uses a proximal term in optimization.
     '''
 
-    def __init__(self, state: OrderedDict[str, torch.Tensor], mu: float = 1.0):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], scheduler: torch.optim.lr_scheduler.LRScheduler, mu: float = 1.0):
         '''
         Initializes the algorithm with an initial state.
 
@@ -200,11 +221,13 @@ class FedProx(FedAvg):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
+        scheduler: torch.optim.lr_scheduler.LRScheduler
+            Learning rate scheduler over multiple server rounds
         mu: float
             Proximal term weight in local loss function (1.0 by default)
         '''
 
-        super().__init__(state)
+        super().__init__(state, scheduler)
         
         self.mu = mu
         self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
@@ -238,7 +261,7 @@ class FedProx(FedAvg):
         # weight decay is L2 (ridge) penalty
         optimizer = torch.optim.SGD(
                 model.parameters(), 
-                lr = client.args.learning_rate, 
+                lr = self.lr, 
                 momentum = client.args.momentum, 
                 weight_decay = client.args.weight_decay
         )
@@ -311,6 +334,7 @@ class FedYogi(FedAvg):
     def __init__(
             self, 
             state: OrderedDict[str, torch.Tensor],
+            scheduler: torch.optim.lr_scheduler.LRScheduler,
             beta_1: float = 0.9,
             beta_2: float = 0.99,
             tau: float = 1e-4,
@@ -323,9 +347,11 @@ class FedYogi(FedAvg):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
+        scheduler: torch.optim.lr_scheduler.LRScheduler
+            Learning rate scheduler over multiple server rounds
         '''
 
-        super().__init__(state)
+        super().__init__(state, scheduler)
         
         self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
         self.beta_1 = beta_1
@@ -362,3 +388,6 @@ class FedYogi(FedAvg):
             self._state[key] = self._state[key] + self.eta * self.delta[key] / (self.v[key].sqrt() + self.tau)
         # all updates have been consumed, so they can be removed
         self._updates.clear()
+        # aggregation means the end of current round, so we can update clients learning rate
+        self._scheduler.optimizer.step()
+        self._scheduler.step()

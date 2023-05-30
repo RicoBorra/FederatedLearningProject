@@ -23,7 +23,8 @@ class Server(object):
         algorithm: type,
         model: nn.Module,
         clients: dict[str, Client],
-        args: Any
+        args: Any,
+        id: str
     ):
         '''
         Initialized a server training a central model on terminal clients in a federated setting.
@@ -38,12 +39,15 @@ class Server(object):
             Groups of clients, divided among `training`, `validation` and `testing`
         args: Any
             Command line arguments of the simulation
+        id: str
+            Identifier of running simulation
         '''
         
         self.args = args
         self.model = model
         self.algorithm = algorithm(model.state_dict())
         self.clients = clients
+        self.id = id
         self.evaluators = { group: FederatedMetrics() for group in clients.keys() }
         # appropriate client selection strategy
         self.initialize_client_selection_strategy()
@@ -81,19 +85,20 @@ class Server(object):
                 self.model.load_state_dict(self.algorithm.state)
                 # eventually evaluates the model on training and validation cloents
                 if round % self.args.evaluation == 0:
-                    # FIXME subset evaluation
-                    self.evaluate(round, fraction = self.args.evaluation_fraction)
-                # eventually saves updated central model parameters as checkpoint
-                if self.args.checkpoint is not None and round > 0 and round % int(self.args.checkpoint[0]) == 0:
-                    self.save(round)
+                    # subset evaluation
+                    self.evaluate(round, fraction = self.args.evaluators)
         # final evaluation
         with torch.no_grad():
             # eventually involves clients from `testing`
             self.evaluate(
                 self.args.rounds, 
-                fraction = self.args.evaluation_fraction, 
-                testing = getattr(self.args, 'testing', False)
+                fraction = self.args.evaluators, 
+                testing = getattr(self.args, 'testing', True)
             )
+            # eventually saves updated central model parameters as checkpoint
+            if self.args.save is not None:
+                self.save()
+
 
     def evaluate(self, round: int, fraction: float, testing: bool = False):
         '''
@@ -105,23 +110,21 @@ class Server(object):
         round: int
             Training round of the server
         fraction: float
-            Fraction of clients from each group to be evaluated (1.0 by default)
+            Fraction (if < 1.0) or number (if >= 1.0) of clients from each group to be evaluated
         testing: bool
             Tells whether to run evaluation on the original hold out clients of
             `testing` group (False by default)
         '''
 
-        # FIXME subset evaluation
-        # FIXME remove 50
-        validators = random.sample(self.clients['training'], k = math.floor(fraction * len(self.clients['training']))) if fraction < 1.0 else self.clients['training']
-        # validators = random.sample(self.clients['training'], k = 100)
+        # subset evaluation
+        k = math.floor(fraction * len(self.clients['training'])) if fraction < 1.0 else min(len(self.clients['training']), int(fraction))
+        validators = random.sample(self.clients['training'], k = k)
         # evaluation of clients from 'training' group
         for client in tqdm(validators, desc = '[+] evaluating training clients'):
             client.validate(self.model, self.evaluators['training'])
-        # FIXME subset evaluation
-        # FIXME remove 50
-        validators = random.sample(self.clients['validation'], k = math.floor(fraction * len(self.clients['validation']))) if fraction < 1.0 else self.clients['validation']
-        # validators = random.sample(self.clients['validation'], k = 100)
+        # subset evaluation
+        k = math.floor(fraction * len(self.clients['validation'])) if fraction < 1.0 else min(len(self.clients['validation']), int(fraction))
+        validators = random.sample(self.clients['validation'], k = k)
         # evaluation of clients from 'validation' group
         for client in tqdm(validators, desc = '[+] evaluating validation clients'):
             client.validate(self.model, self.evaluators['validation'])
@@ -178,19 +181,13 @@ class Server(object):
                 'loss/testing': self.evaluators['testing']['ce_loss']
             })
 
-    def save(self, round: int):
+    def save(self):
         '''
         Saves the central model parameters as a checkpoint.
-
-        Parameters
-        ----------
-        round: int
-            Training round of the server
         '''
 
         # model name is a combination of the round and hash of its parameters
-        name = f'round_{str(round).zfill(4)}_hash_{hash(str(self.algorithm.state))}.pt'
-        torch.save(self.algorithm.state, os.path.join(self.args.checkpoint[1], name))
+        torch.save(self.algorithm.state, os.path.join(self.args.save, f'{self.id}.pt'))
 
     def initialize_logger(self):
         '''

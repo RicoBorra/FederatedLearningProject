@@ -40,6 +40,37 @@ def set_seed(seed: int, deterministic: bool = True):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = deterministic
 
+def initialize_learning_rate_scheduler(args: Any) -> torch.optim.lr_scheduler.LRScheduler:
+    '''
+    Constructs a scheduler decaying learning rate over multiple training rounds of clients.
+
+    Parameters
+    ----------
+    args: Any
+        Command line arguments of the simulation
+
+    Returns
+    -------
+    torch.optim.lr_scheduler.LRScheduler
+        Learning rate scheduler
+    '''
+    
+    scheduling = args.scheduler[0].lower()
+    # dummy optimizer
+    dummy = torch.optim.SGD([ torch.nn.Parameter(torch.zeros([])) ], lr = args.learning_rate)
+    # constructs learning rate scheduler of right kind
+    # decaying every central round of 'gamma' factor
+    if scheduling == 'exp':
+        return torch.optim.lr_scheduler.ExponentialLR(dummy, gamma = float(args.scheduler[1]))
+    # decaying every 'step_size' central rounds of 'gamma' factor
+    elif scheduling == 'step':
+        return torch.optim.lr_scheduler.StepLR(dummy, step_size = int(args.scheduler[2]), gamma = float(args.scheduler[1]))
+    # linear scheduling from 'start_factor' up to 'learning_rate' in 'total_iters' rounds
+    elif scheduling == 'linear':
+        return torch.optim.lr_scheduler.LinearLR(dummy, start_factor = float(args.scheduler[1]), total_iters = int(args.scheduler[2]))
+    # default, no scheduling
+    return torch.optim.lr_scheduler.LambdaLR(dummy, lambda round: 1)
+
 def initialize_model(args: Any) -> torch.nn.Module:
     '''
     Initializes the central model to be trained.
@@ -99,21 +130,23 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
         Federated learning algorithm
     '''
 
+    scheduler = initialize_learning_rate_scheduler(args)
+    # binds scheduler
     if not args.algorithm or args.algorithm[0] == 'fedavg':
-        return algorithm.FedAvg
+        return partial(algorithm.FedAvg, scheduler = scheduler)
     elif args.algorithm[0] == 'fedprox':
-        return partial(algorithm.FedProx, mu = float(args.algorithm[1])) if len(args.algorithm) > 1 else algorithm.FedProx
+        return partial(algorithm.FedProx, scheduler = scheduler, mu = float(args.algorithm[1])) if len(args.algorithm) > 1 else partial(algorithm.FedProx, scheduler = scheduler)
     elif args.algorithm[0] == 'fedyogi':
         return partial(
             algorithm.FedYogi, 
+            scheduler = scheduler,
             beta_1 = 0.9 if len(args.algorithm) < 2 else float(args.algorithm[1]),
             beta_2 = 0.99 if len(args.algorithm) < 3 else float(args.algorithm[2]),
             tau = 1e-4 if len(args.algorithm) < 4 else float(args.algorithm[3]),
             eta = 10 ** (-2.5) if len(args.algorithm) < 5 else float(args.algorithm[4])
         )
     # federated algorithm not recognized
-    raise RuntimeError(f'unrecognized federated algorithm \'{args.algorithm[0]}\', expected \'fedavg\' or \'fedprox\'')
-
+    raise RuntimeError(f'unrecognized federated algorithm \'{args.algorithm[0]}\', expected \'fedavg\', \'fedyogi\' or \'fedprox\'')
 
 def get_arguments() -> Any:
     '''
@@ -129,7 +162,7 @@ def get_arguments() -> Any:
         usage = 'run experiment on baseline FEMNIST dataset (federated, so decentralized) with a CNN architecture',
         description = 'This program is used to log to Weights & Biases training and validation results\nevery epoch of training on the EMNIST dataset. The employed architecture is a\nconvolutional neural network with two convolutional blocks and a fully connected layer.\nStochastic gradient descent is used by default as optimizer along with cross entropy loss.',
         formatter_class = argparse.RawDescriptionHelpFormatter,
-        epilog = "note: argument \'--scheduler\' accept different learning rate scheduling choices (\'exp\', \'onecycle\' or \'step\') followed by decaying factor and decaying period\n\n" \
+        epilog = "note: argument \'--scheduler\' accept different learning rate scheduling choices (\'exp\', \'linear\' or \'step\') followed by decaying factor and decaying period\n\n" \
             "examples:\n\n" \
             ">>> python3 experiments/script.py --batch_size 256 --learning_rate 0.1 --momentum 0.9 --weight_decay 0.0001 --rounds 1000 --epochs 1 --scheduler exp 0.5 --algorithm fedyogi 0.9 0.99 1e-4 1e-2\n\n" \
             "This command executes the experiment using\n" \
@@ -147,14 +180,12 @@ def get_arguments() -> Any:
             " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 central rounds\n" \
             " [+] running server rounds for training and validation: 1000\n" \
             " [+] running local client epoch: 5\n\n" \
-            ">>> python3 experiments/script.py --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --scheduler onecycle 0.1 --algorithm fedavg --selection poc 30 --checkpoint 5 ./saved\n\n" \
+            ">>> python3 experiments/script.py --niid --batch_size 512 --learning_rate 0.01 --epochs 5 --rounds 500 --algorithm fedavg --selection poc 30\n\n" \
             "This command executes the experiment using\n" \
             " [+] algorithm: fedavg\n" \
-            " [+] checkpoint: saves model parameters every 5 rounds in ./saved\n" \
             " [+] dataset distribution: niid (unbalanced across clients)\n" \
             " [+] batch size: 512\n" \
             " [+] selection strategy: power of choice with candidate set of 30 clients\n" \
-            " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
             " [+] running server rounds for training and validation: 500\n" \
             " [+] running local client epoch: 5"
     )
@@ -172,12 +203,12 @@ def get_arguments() -> Any:
     parser.add_argument('--batch_size', type = int, default = 64, help = 'batch size')
     parser.add_argument('--weight_decay', type = float, default = 0, help = 'weight decay')
     parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
-    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling, like \'step\' or \'exp\' or \'onecycle\'')
+    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling, like \'step\' or \'exp\' or \'linear\'')
     parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
     parser.add_argument('--evaluation', type = int, default = 10, help = 'evaluation interval of training and validation set')
-    parser.add_argument('--evaluation_fraction', type = float, default = 0.25, help = 'fraction of clients to be evaluated from training and validation set')
-    parser.add_argument('--testing', action = 'store_true', default = False, help = 'run final evaluation on unseen testing clients')
-    parser.add_argument('--checkpoint', metavar = ('interval', 'params'), type = str, nargs = '+', default = None, help = 'Checkpoint after rounds interval and directory')
+    parser.add_argument('--evaluators', type = float, default = float(250), help = 'fraction (if < 1.0) or number (if >= 1) of clients to be evaluated from training and validation set')
+    parser.add_argument('--testing', action = 'store_true', default = True, help = 'run final evaluation on unseen testing clients')
+    parser.add_argument('--save', type = str, default = 'checkpoints', help = 'save state dict after training in path')
     parser.add_argument('--log', action = 'store_true', default = False, help = 'whether or not to log to weights & biases')
 
     return parser.parse_args()
@@ -210,13 +241,16 @@ if __name__ == '__main__':
     print('[+] constructing clients... ', end = '', flush = True)
     clients = client.construct(datasets, device, args)
     print('done')
+    # simulation identifier
+    identifier = f"{'NIID' if args.niid else 'IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{','.join(args.selection)}_R{args.reduction}_A{','.join(args.algorithm)}"
     # server uses training clients and validation clients when fitting the central model
     # clients from testing group should be used at the very end
     server = server.Server(
         algorithm = initialize_federated_algorithm(args), 
         model = model,
         clients = clients,
-        args = args
+        args = args,
+        id = identifier
     )
     # initial log
     print('[+] running with configuration')
@@ -233,15 +267,14 @@ if __name__ == '__main__':
     print(f'  [-] epochs: {args.epochs}')
     print(f'  [-] clients selected: {args.selected}')
     print(f"  [-] selection strategy: {' '.join(args.selection)}")
-    print(f'  [-] fraction of clients evaluated: {args.evaluation_fraction}')
+    print(f'  [-] fraction or number of clients evaluated: {args.evaluators}')
     print(f'  [-] final testing: {args.testing}')
-    print(f"  [-] checkpoint: {args.checkpoint if args.checkpoint else 'none'}")
     print(f'  [-] remote log enabled: {args.log}')
     # initialize configuration for weights & biases log
     wandb.init(
         mode = 'online' if args.log else 'disabled',
         project = 'federated',
-        name = f"{'NIID' if args.niid else 'IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{args.selection}_R{args.reduction}_A{args.algorithm}",
+        name = identifier,
         config = {
             'seed': args.seed,
             'dataset': args.dataset,
@@ -255,7 +288,8 @@ if __name__ == '__main__':
             'learning_rate': args.learning_rate,
             'batch_size': args.batch_size,
             'weight_decay': args.weight_decay,
-            'momentum': args.momentum
+            'momentum': args.momentum,
+            'algorithm': args.algorithm
         }
     )
     # execute training and validation epochs
