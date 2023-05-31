@@ -72,10 +72,12 @@ class CNN(nn.Module):
         logits = self(x)
         loss = self.criterion(logits, y)
         loss = self.reduction(loss, y)
+        # gradient computation
         optimizer.zero_grad()
         loss.backward()
-        # FIXME gradient clip
-        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        # clip gradient norm to avoid errors
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 10.0)
+        # gradient update
         optimizer.step()
         return logits, loss.item()
 

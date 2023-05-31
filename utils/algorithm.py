@@ -285,7 +285,7 @@ class FedProx(FedAvg):
                 optimizer.zero_grad()
                 loss.backward()
                 # clip gradient norm to avoid errors
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
                 # update weights
                 optimizer.step()
 

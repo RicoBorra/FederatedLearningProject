@@ -126,6 +126,35 @@ if __name__ == '__main__':
         os.mkdir('checkpoints')
     # FIXME enable log to True
     runner = ExperimentRunner()
+    # centralized baseline
+    runner.schedule(
+        script = 'experiments/centralized_baseline.py',
+        grid = {
+            'seed': [ 0 ],
+            'epochs': [ 10 ],
+            'learning_rate': [ 1e-2, 5e-2 ],
+            'scheduler': [ 'none', ('step', 0.5, 1) ], # halves the learning rate every epoch
+            'batch_size': [ 256 ],
+            'weight_decay': [ 1e-5 ],
+            'momentum': [ 0.9 ],
+            'log': [ False ]
+        }
+    )
+    # centralized domain generalization baseline (rotated domains)
+    runner.schedule(
+        script = 'experiments/centralized_generalization.py',
+        grid = {
+            'seed': [ 0 ],
+            'validation_domain_angle': [ None, 0, 15, 30, 45, 60, 75 ],
+            'epochs': [ 10 ],
+            'learning_rate': [ 1e-2, 5e-2 ],
+            'scheduler': [ 'none', ('step', 0.5, 1) ], # halves the learning rate every epoch
+            'batch_size': [ 256 ],
+            'weight_decay': [ 1e-5 ],
+            'momentum': [ 0.9 ],
+            'log': [ False ]
+        }
+    )
     # federated baseline
     runner.schedule(
         script = 'experiments/federated_baseline.py',

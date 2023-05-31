@@ -242,7 +242,7 @@ if __name__ == '__main__':
     clients = client.construct(datasets, device, args)
     print('done')
     # simulation identifier
-    identifier = f"{'NIID' if args.niid else 'IID'}_S{args.seed}_BS{args.batch_size}_LR{args.learning_rate}_M{args.momentum}_WD{args.weight_decay}_NR{args.rounds}_NE{args.epochs}_LRS{','.join(args.scheduler)}_C{args.selected}_S{','.join(args.selection)}_R{args.reduction}_A{','.join(args.algorithm)}"
+    identifier = f"{'niid' if args.niid else 'iid'}_s{args.seed}_a{':'.join(args.algorithm)}_r{args.rounds}_e{args.epochs}_c{args.selected}_cs{':'.join(args.selection)}_lr{args.learning_rate}_lrs{':'.join(args.scheduler)}_bs{args.batch_size}_m{args.momentum}_wd{args.weight_decay}_rd{args.reduction}"
     # server uses training clients and validation clients when fitting the central model
     # clients from testing group should be used at the very end
     server = server.Server(
@@ -254,6 +254,7 @@ if __name__ == '__main__':
     )
     # initial log
     print('[+] running with configuration')
+    print(f'  [-] id: {identifier}')
     print(f'  [-] seed: {args.seed}')
     print(f"  [-] distribution: {'niid' if args.niid else 'iid'}")
     print(f'  [-] batch size: {args.batch_size}')
@@ -283,13 +284,14 @@ if __name__ == '__main__':
             'rounds': args.rounds,
             'epochs': args.epochs,
             'selected': args.selected,
-            'selection': args.selection,
+            'selection': ':'.join(args.selection),
             'reduction': args.reduction,
             'learning_rate': args.learning_rate,
+            'scheduler': ':'.join(args.scheduler),
             'batch_size': args.batch_size,
             'weight_decay': args.weight_decay,
             'momentum': args.momentum,
-            'algorithm': args.algorithm
+            'algorithm': ':'.join(args.algorithm)
         }
     )
     # execute training and validation epochs

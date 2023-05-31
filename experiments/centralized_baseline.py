@@ -50,26 +50,26 @@ def set_seed(random_seed):
 
 
 def get_arguments():
-    epilog = "note: argument \'--lrs\' accept different learning rate scheduling choices (\'exp\' or \'step\') followed by decaying factor and decaying period\n\n" \
+    epilog = "note: argument \'--scheduler\' accept different learning rate scheduling choices (\'exp\' or \'step\') followed by decaying factor and decaying period\n\n" \
         "examples:\n\n" \
-        ">>> python3 experiments/centralized_baseline.py --bs 256 --lr 0.1 --m 0.9 --wd 0.0001 --num_epochs 10 --lrs exp 0.5\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --batch_size 256 --learning_rate 0.1 --momentum 0.9 --weight_decay 0.0001 --epochs 10 --scheduler exp 0.5\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 256\n" \
         " [+] learning rate: 0.1 decaying exponentially with multiplicative factor 0.5\n" \
         " [+] SGD momentum: 0.9\n" \
         " [+] SGD weight decay penalty: 0.0001\n" \
         " [+] running epoch for training and validation: 10\n\n" \
-        ">>> python3 experiments/centralized_baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs step 0.75 3\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --batch_size 512 --learning_rate 0.01 --epochs 100 --scheduler step 0.75 3\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 512\n" \
         " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 epochs\n" \
         " [+] running epoch for training and validation: 100\n\n" \
-        ">>> python3 experiments/centralized_baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs linear 0.1 8\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --batch_size 512 --learning_rate 0.01 --epochs 100 --scheduler linear 0.1 8\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 512\n" \
         " [+] learning rate: 0.1 is starting factor of linear growth for 8 epochs\n" \
         " [+] running epoch for training and validation: 100\n\n" \
-        ">>> python3 experiments/centralized_baseline.py --bs 512 --lr 0.01 --num_epochs 100 --lrs onecycle 0.1\n\n" \
+        ">>> python3 experiments/centralized_baseline.py --batch_size 512 --learning_rate 0.01 --epochs 100 --scheduler onecycle 0.1\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 512\n" \
         " [+] learning rate: 0.1 with one cycle cosine annealing rising up to a peak of 0.1 and then decreasing\n" \
@@ -81,12 +81,12 @@ def get_arguments():
         formatter_class = argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
-    parser.add_argument('--num_epochs', default = 10, type = int, help = 'number of local epochs')
-    parser.add_argument('--lr', type = float, default = 0.05, help = 'learning rate')
-    parser.add_argument('--bs', type = int, default = 512, help = 'batch size')
-    parser.add_argument('--wd', type = float, default = 0, help = 'weight decay')
-    parser.add_argument('--m', type = float, default = 0.9, help = 'momentum')
-    parser.add_argument('--lrs', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling')
+    parser.add_argument('--epochs', default = 10, type = int, help = 'number of local epochs')
+    parser.add_argument('--learning_rate', type = float, default = 0.05, help = 'learning rate')
+    parser.add_argument('--batch_size', type = int, default = 512, help = 'batch size')
+    parser.add_argument('--weight_decay', type = float, default = 0, help = 'weight decay')
+    parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
+    parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling')
     parser.add_argument('--kfold', type=int, default=None, help='kfold cross validation')
     parser.add_argument('--log', action='store_true', default=False, help='whether or not to log to weights & biases')
     return parser.parse_args()
@@ -117,28 +117,28 @@ def load_k_fold_emnist(k: int, batch_size: int) -> tuple[list[tuple[DataLoader, 
 
 
 def load_model(args, n_batches: int):
-    scheduling = args.lrs[0].lower()
+    scheduling = args.scheduler[0].lower()
     model = cnn.CNN(
         num_classes = 62,
         loss_reduction = MeanReduction(),
     )
     model.optimizer = torch.optim.SGD(
         model.parameters(),
-        lr = args.lr, 
-        momentum = args.m, 
-        weight_decay = args.wd
+        lr = args.learning_rate, 
+        momentum = args.momentum, 
+        weight_decay = args.weight_decay
     )
     # constructs learning rate scheduler
     if scheduling == 'none':
         model.scheduler = None
     elif scheduling == 'exp':
-        model.scheduler = torch.optim.lr_scheduler.ExponentialLR(model.optimizer, gamma = float(args.lrs[1]))
+        model.scheduler = torch.optim.lr_scheduler.ExponentialLR(model.optimizer, gamma = float(args.scheduler[1]))
     elif scheduling == 'step':
-        model.scheduler = torch.optim.lr_scheduler.StepLR(model.optimizer, step_size = int(args.lrs[2]), gamma = float(args.lrs[1]))
+        model.scheduler = torch.optim.lr_scheduler.StepLR(model.optimizer, step_size = int(args.scheduler[2]), gamma = float(args.scheduler[1]))
     elif scheduling == 'onecycle':
-        model.scheduler = torch.optim.lr_scheduler.OneCycleLR(model.optimizer, max_lr = float(args.lrs[1]), epochs = int(args.num_epochs), steps_per_epoch = n_batches)
+        model.scheduler = torch.optim.lr_scheduler.OneCycleLR(model.optimizer, max_lr = float(args.scheduler[1]), epochs = int(args.epochs), steps_per_epoch = n_batches)
     elif scheduling == 'linear':
-        model.scheduler = torch.optim.lr_scheduler.LinearLR(model.optimizer, start_factor = float(args.lrs[1]), total_iters = int(args.lrs[2]))
+        model.scheduler = torch.optim.lr_scheduler.LinearLR(model.optimizer, start_factor = float(args.scheduler[1]), total_iters = int(args.scheduler[2]))
     else:
         print('[*] unrecognized learning rate scheduling, set to \'none\'')
         model.scheduler = None
@@ -165,9 +165,9 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
     wandb.watch(model, log = 'all')
     wandb.define_metric('epoch')
     wandb.define_metric('loss/training', step_metric = 'epoch')
-    wandb.define_metric('loss/testing', step_metric = 'epoch')
+    wandb.define_metric('loss/validation', step_metric = 'epoch')
     wandb.define_metric('accuracy/training', step_metric = 'epoch')
-    wandb.define_metric('accuracy/testing', step_metric = 'epoch')
+    wandb.define_metric('accuracy/validation', step_metric = 'epoch')
     # compile if possible
     # if hasattr(torch, 'compile'):
     #     model = torch.compile(model)
@@ -214,9 +214,9 @@ def run(model: torch.nn.Module, training_loader: DataLoader, validation_loader: 
         wandb.log({
             'epoch': epoch + 1,
             'loss/training': training_loss,
-            'loss/testing': validation_loss,
+            'loss/validation': validation_loss,
             'accuracy/training': training_score,
-            'accuracy/testing': validation_score
+            'accuracy/validation': validation_score
         })
         # log metrics
         print(f'  [-] loss: {training_loss:.3f}, score: {training_score:.3f} (training)')
@@ -230,37 +230,40 @@ if __name__ == '__main__':
     args = get_arguments()
     # set seed
     set_seed(args.seed)
+    # simulation identifier
+    identifier = f"emnist_s{args.seed}_e{args.epochs}_lr{args.learning_rate}_lrs{':'.join(args.scheduler)}_bs{args.batch_size}_m{args.momentum}_wd{args.weight_decay}"
     # log
     wandb.init(
         mode = 'online' if args.log else 'disabled',
         project = 'centralized',
-        name = f"EMNIST_S{args.seed}_BS{args.bs}_LR{args.lr}_M{args.m}_WD{args.wd}_NE{args.num_epochs}_LRS{','.join(args.lrs)}",
+        name = identifier,
         config = {
             'seed': args.seed,
             'dataset': 'emnist',
             'model': 'cnn',
-            'num_epochs': args.num_epochs,
-            'learning_rate': args.lr,
-            'scheduling': args.lrs,
-            'batch_size': args.bs,
-            'weight_decay': args.wd,
-            'momentum': args.m
+            'epochs': args.epochs,
+            'learning_rate': args.learning_rate,
+            'scheduler': ':'.join(args.scheduler),
+            'batch_size': args.batch_size,
+            'weight_decay': args.weight_decay,
+            'momentum': args.momentum
         }
     )
     # initial log
     print('[+] running with configuration')
+    print(f'  [-] id: {identifier}')
     print(f'  [-] seed: {args.seed}')
-    print(f'  [-] batch size: {args.bs}')
-    print(f'  [-] learning rate: {args.lr}')
-    print(f'  [-] momentum: {args.m}')
-    print(f'  [-] weight decay L2: {args.wd}')
-    print(f'  [-] epochs: {args.num_epochs}')
-    print(f'  [-] learning rate scheduling: {args.lrs}')
+    print(f'  [-] batch size: {args.batch_size}')
+    print(f'  [-] learning rate: {args.learning_rate}')
+    print(f'  [-] momentum: {args.momentum}')
+    print(f'  [-] weight decay L2: {args.weight_decay}')
+    print(f'  [-] epochs: {args.epochs}')
+    print(f"  [-] learning rate scheduling: {' ' .join(args.scheduler)}")
     print(f'  [-] remote log enabled: {args.log}')
     # execution has two modes, kfold or none
     if args.kfold is not None:
         # data loaders (training and validation for each fold) and unique testing loader
-        loaders, testing_loader = load_k_fold_emnist(k = 5, batch_size = args.bs)
+        loaders, testing_loader = load_k_fold_emnist(k = 5, batch_size = args.batch_size)
         # load model
         model = load_model(args, n_batches = len(loaders[0][0]))
         print('[+] running cross validation')
@@ -272,7 +275,7 @@ if __name__ == '__main__':
         # kfold validation multiple runs
         for training_loader, validation_loader in loaders:
             # train and validate model as expected
-            loss, score = run(model, training_loader, validation_loader, epochs = args.num_epochs)
+            loss, score = run(model, training_loader, validation_loader, epochs = args.epochs)
             # utilizes results for averaging later
             losses.append(loss)
             scores.append(score)
@@ -283,10 +286,10 @@ if __name__ == '__main__':
         print(f'[+] mean validation score: {np.mean(scores):.3f} ± {np.std(scores):.3f}')
     else:
         # data loaders
-        training_loader, validation_loader = load_emnist(batch_size = args.bs)
+        training_loader, validation_loader = load_emnist(batch_size = args.batch_size)
         # load model
         model = load_model(args, n_batches = len(training_loader))
         # train and validate model as expeced
-        run(model, training_loader, validation_loader, epochs = args.num_epochs)
+        run(model, training_loader, validation_loader, epochs = args.epochs)
     # terminate weights & biases session by sincynchronizing
     wandb.finish()

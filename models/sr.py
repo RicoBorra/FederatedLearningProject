@@ -180,7 +180,8 @@ class SimpleRepresentationClassifier(torch.nn.Module):
         # gradient computation and weights update
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        # clip gradient norm to avoid errors
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 10.0)
         optimizer.step()
         # returns outputs and scalar loss
         return logits, loss.item()
