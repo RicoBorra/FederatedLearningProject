@@ -24,7 +24,7 @@ class ExperimentRunner(object):
         # command of experiments being executed after scheduling
         self.commands = []
 
-    def schedule(self, script: str, grid: Dict[str, Sequence[Any]]) -> Any:
+    def schedule(self, script: str, grid: Dict[str, Sequence[Any]], enable: bool = True) -> Any:
         '''
         Schedules a set of multiple runs (using the `grid`) of the same experiment.
         
@@ -35,6 +35,8 @@ class ExperimentRunner(object):
         grid: Dict[str, Sequence[Any]]
             Grid of multiple command line arguments passed to the script for
             multiple executions of the same experiment
+        enable: bool
+            If `True` (by default) then runs the experiments
 
         Returns
         -------
@@ -42,8 +44,10 @@ class ExperimentRunner(object):
             `ExperimentRunner` instance
         '''
         
-        # constructs a command for each script execution with a certain combination of command line parameters
-        self.commands.extend([ ExperimentRunner.command(self.interpreter, script, params) for params in ExperimentRunner.expand(grid) ])
+        if enable:
+            # constructs a command for each script execution with a certain combination of command line parameters
+            self.commands.extend([ ExperimentRunner.command(self.interpreter, script, params) for params in ExperimentRunner.expand(grid) ])
+        # yields instance
         return self
 
     def run(self):
@@ -129,7 +133,14 @@ class ExperimentRunner(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(usage = 'run all experiments')
-    parser.add_argument('--interpreter', type = str, default = './env/bin/python3', help = 'python interpreter invoked for the execution of scripts')
+    parser.add_argument('--interpreter', type = str, default = './env/bin/python3', help = 'python interpreter invoked for scripts')
+    parser.add_argument('--log', action = 'store_true', default = False, help = 'whether or not to log to weights & biases')
+    parser.add_argument('--centralized_base', action = 'store_true', default = False, help = 'run centralized emnist experiments for baseline')
+    parser.add_argument('--centralized_dg', action = 'store_true', default = False, help = 'run centralized emnist experiments in domain generalization setting')
+    parser.add_argument('--federated_base', action = 'store_true', default = False, help = 'run federated femnist experiments for baseline')
+    parser.add_argument('--federated_smart', action = 'store_true', default = False, help = 'run federated femnist experiments using smart client selection')
+    parser.add_argument('--federated_opt', action = 'store_true', default = False, help = 'run federated femnist experiments using state of the art algorithms')
+    parser.add_argument('--federated_dg', action = 'store_true', default = False, help = 'run federated femnist experiments in domain generalization setting')
     arguments = parser.parse_args()
     # checkpoints directory for state dictionaries
     if not os.path.exists('checkpoints'):
@@ -147,8 +158,9 @@ if __name__ == '__main__':
             'batch_size': [ 256 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.centralized_base
     )
     # centralized domain generalization baseline (rotated domains)
     runner.schedule(
@@ -162,8 +174,9 @@ if __name__ == '__main__':
             'batch_size': [ 256 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.centralized_dg
     )
     # federated baseline
     runner.schedule(
@@ -184,8 +197,9 @@ if __name__ == '__main__':
             'algorithm': [ 'fedavg' ],
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_base
     )
     # smart client selection on federated baseline
     runner.schedule(
@@ -207,8 +221,9 @@ if __name__ == '__main__':
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
             'selection': [ ('hybrid', 0.5, 0.10), ('hybrid', 0.0001, 0.30) ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_smart
     )
     # smart client selection with power of choice on federated baseline
     runner.schedule(
@@ -230,8 +245,9 @@ if __name__ == '__main__':
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
             'selection': [ ('poc', 10), ('poc', 25) ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_smart
     )
     # domain generalization in federated setting
     runner.schedule(
@@ -253,8 +269,9 @@ if __name__ == '__main__':
             'validation_domain_angle': [ None, 0, 15, 30, 45, 60, 75 ],
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_dg
     )
     # state of the art algorithms in federated setting
     runner.schedule(
@@ -282,8 +299,9 @@ if __name__ == '__main__':
             ],
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
-            'log': [ False ]
-        }
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_opt
     )
     # run all experiments
     runner.run()
