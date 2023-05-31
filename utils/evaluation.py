@@ -124,14 +124,14 @@ class FederatedMetrics(object):
         self.n_classes = n_classes
         self.device = device
         self.confusion_matrix = MulticlassConfusionMatrix(num_classes = n_classes).to(device)
-        self.ce_loss = FederatedLossObjective(
+        self.loss = FederatedLossObjective(
             objective = lambda logits, target: torch.nn.functional.cross_entropy(logits, target).item()
         )
         self.results = {
             'accuracy': None,
             'weighted_accuracy': None,
             'class_accuracy': None,
-            'ce_loss': None
+            'loss': None
         }
 
     def update(self, predicted: torch.Tensor, target: torch.Tensor):
@@ -148,7 +148,7 @@ class FederatedMetrics(object):
         '''
 
         self.confusion_matrix.update(predicted, target)
-        self.ce_loss.update(predicted, target)
+        self.loss.update(predicted, target)
 
     def update(self, predicted: torch.Tensor, target: torch.Tensor, loss: float):
         '''
@@ -164,7 +164,7 @@ class FederatedMetrics(object):
         '''
 
         self.confusion_matrix.update(predicted, target)
-        self.ce_loss.update(predicted, target, loss)
+        self.loss.update(predicted, target, loss)
 
     def reset(self):
         '''
@@ -172,7 +172,7 @@ class FederatedMetrics(object):
         '''
 
         self.confusion_matrix.reset()
-        self.ce_loss.reset()
+        self.loss.reset()
         # sets computed metrics to null
         for metric in self.results.keys():
             self.results[metric] = None
@@ -201,7 +201,7 @@ class FederatedMetrics(object):
         # this is a unique measure given by the overall accuracy, not indicative for unbalanced data
         self.results['accuracy'] = n_correctly_predicted.sum() / n_samples
         # cross entropy loss
-        self.results['ce_loss'] = self.ce_loss.compute()
+        self.results['loss'] = self.loss.compute()
         # loads results for retrieval
         for metric in self.results.keys():
             if torch.is_tensor(self.results[metric]):

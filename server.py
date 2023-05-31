@@ -136,24 +136,24 @@ class Server(object):
             # training metrics
             f"[+] accuracy: {100 * self.evaluators['training']['accuracy']:.3f}%, "
             f"weighted accuracy: {100 * self.evaluators['training']['weighted_accuracy']:.3f}%, "
-            f"loss: {self.evaluators['training']['ce_loss']:.5f} (training)\n"
+            f"loss: {self.evaluators['training']['loss']:.5f} (training)\n"
             # validation metrics
             f"[+] accuracy: {100 * self.evaluators['validation']['accuracy']:.3f}%, "
             f"weighted accuracy: {100 * self.evaluators['validation']['weighted_accuracy']:.3f}%, "
-            f"loss: {self.evaluators['validation']['ce_loss']:.5f} (validation)"
+            f"loss: {self.evaluators['validation']['loss']:.5f} (validation)"
         )
         # log metrics remotely to weights and biases
         wandb.log({
             'round': round + 1,
             'accuracy/weighted/training': self.evaluators['training']['weighted_accuracy'],
             'accuracy/overall/training': self.evaluators['training']['accuracy'],
-            'loss/training': self.evaluators['training']['ce_loss']
+            'loss/training': self.evaluators['training']['loss']
         })
         wandb.log({
             'round': round + 1,
             'accuracy/weighted/validation': self.evaluators['validation']['weighted_accuracy'],
             'accuracy/overall/validation': self.evaluators['validation']['accuracy'],
-            'loss/validation': self.evaluators['validation']['ce_loss']
+            'loss/validation': self.evaluators['validation']['loss']
         })
         # eventually this is executed at the end of the entire simulation in order to
         # understand how well the central model performs on new unseen `testing` clients
@@ -171,14 +171,14 @@ class Server(object):
                 # testing metrics
                 f"[+] accuracy: {100 * self.evaluators['testing']['accuracy']:.3f}%, "
                 f"weighted accuracy: {100 * self.evaluators['testing']['weighted_accuracy']:.3f}%, "
-                f"loss: {self.evaluators['testing']['ce_loss']:.5f} (validation)"
+                f"loss: {self.evaluators['testing']['loss']:.5f} (validation)"
             )
             # log metrics remotely to weights and biases
             wandb.log({
                 'round': round + 1,
                 'accuracy/weighted/testing': self.evaluators['testing']['weighted_accuracy'],
                 'accuracy/overall/testing': self.evaluators['testing']['accuracy'],
-                'loss/testing': self.evaluators['testing']['ce_loss']
+                'loss/testing': self.evaluators['testing']['loss']
             })
 
     def save(self):

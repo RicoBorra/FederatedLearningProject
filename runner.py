@@ -1,3 +1,4 @@
+import argparse
 import itertools
 import os
 import subprocess
@@ -9,11 +10,17 @@ class ExperimentRunner(object):
     experiment, or many experiments, through a parameters grid.
     '''
 
-    def __init__(self):
+    def __init__(self, interpreter: str):
         '''
         Constructs an experiments runner.
+
+        Parameters
+        ----------
+        interpreter: str
+            Command line python interpreter, i.e. '/bin/python'
         '''
         
+        self.interpreter = interpreter
         # command of experiments being executed after scheduling
         self.commands = []
 
@@ -36,7 +43,7 @@ class ExperimentRunner(object):
         '''
         
         # constructs a command for each script execution with a certain combination of command line parameters
-        self.commands.extend([ ExperimentRunner.command(script, params) for params in ExperimentRunner.expand(grid) ])
+        self.commands.extend([ ExperimentRunner.command(self.interpreter, script, params) for params in ExperimentRunner.expand(grid) ])
         return self
 
     def run(self):
@@ -54,7 +61,7 @@ class ExperimentRunner(object):
 
 
     @staticmethod
-    def command(script: str, params: Dict[str, Any]) -> str:
+    def command(interpreter: str, script: str, params: Dict[str, Any]) -> str:
         '''
         Constructs a shell command for executing python script within the environment.
 
@@ -72,11 +79,11 @@ class ExperimentRunner(object):
 
         Examples
         --------
-        >>> ExperimentRunner.command(script = 'script.py', params = { 'lr': 0.9, 'niid': True, 'algorithm': ('fedsr', 128, 0.1, 0.01) })
+        >>> ExperimentRunner.command('./env/bin/python3', script = 'script.py', params = { 'lr': 0.9, 'niid': True, 'algorithm': ('fedsr', 128, 0.1, 0.01) })
         >>> './env/bin/python3 script.py --lr 0.9 --niid --algorithm fedsr 128 0.1 0.01'
         '''
         
-        result = f'./env/bin/python3 {script}'
+        result = f'{interpreter} {script}'
         # attach command line parameters according to their type
         for name, value in params.items():
             if value is None:
@@ -121,19 +128,22 @@ class ExperimentRunner(object):
         return list(dict(zip(grid, x)) for x in itertools.product(*grid.values()))
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(usage = 'run all experiments')
+    parser.add_argument('--interpreter', type = str, default = './env/bin/python3', help = 'python interpreter invoked for the execution of scripts')
+    arguments = parser.parse_args()
     # checkpoints directory for state dictionaries
     if not os.path.exists('checkpoints'):
         os.mkdir('checkpoints')
     # FIXME enable log to True
-    runner = ExperimentRunner()
+    runner = ExperimentRunner(interpreter = arguments.interpreter)
     # centralized baseline
     runner.schedule(
         script = 'experiments/centralized_baseline.py',
         grid = {
-            'seed': [ 0 ],
+            'seed': [ 0, 42 ],
             'epochs': [ 10 ],
-            'learning_rate': [ 1e-2, 5e-2 ],
-            'scheduler': [ 'none', ('step', 0.5, 1) ], # halves the learning rate every epoch
+            'learning_rate': [ 5e-3, 1e-2 ],
+            'scheduler': [ ('step', 0.5, 1) ], # decays the learning rate every epoch
             'batch_size': [ 256 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -147,8 +157,8 @@ if __name__ == '__main__':
             'seed': [ 0 ],
             'validation_domain_angle': [ None, 0, 15, 30, 45, 60, 75 ],
             'epochs': [ 10 ],
-            'learning_rate': [ 1e-2, 5e-2 ],
-            'scheduler': [ 'none', ('step', 0.5, 1) ], # halves the learning rate every epoch
+            'learning_rate': [ 1e-2 ],
+            'scheduler': [ ('step', 0.5, 1) ], # decays the learning rate every epoch
             'batch_size': [ 256 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -159,15 +169,15 @@ if __name__ == '__main__':
     runner.schedule(
         script = 'experiments/federated_baseline.py',
         grid = {
-            'seed': [ 0 ],
+            'seed': [ 0, 42 ],
             'dataset': [ 'femnist' ],
             'niid': [ True, False ],
             'model': [ 'cnn' ],
-            'rounds': [ 1000 ],
-            'epochs': [ 1, 5, 10, 20 ],
-            'selected': [ 5, 10 ], # with 20 clients crashes on my laptop
+            'rounds': [ 500 ],
+            'epochs': [ 1, 5, 10 ],
+            'selected': [ 5, 10, 20 ], # with 20 clients crashes on my laptop
             'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.5, 50) ], # halves the learning rate every 50 central rounds
+            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -185,11 +195,11 @@ if __name__ == '__main__':
             'dataset': [ 'femnist' ],
             'niid': [ True, False ],
             'model': [ 'cnn' ],
-            'rounds': [ 1000 ],
+            'rounds': [ 500 ],
             'epochs': [ 5 ],
             'selected': [ 10 ],
             'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.5, 50) ], # halves the learning rate every 50 central rounds
+            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -208,11 +218,11 @@ if __name__ == '__main__':
             'dataset': [ 'femnist' ],
             'niid': [ True, False ],
             'model': [ 'cnn' ],
-            'rounds': [ 1000 ],
+            'rounds': [ 500 ],
             'epochs': [ 5 ],
             'selected': [ 2, 5, 8 ],
             'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.5, 50) ], # halves the learning rate every 50 central rounds
+            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -231,11 +241,11 @@ if __name__ == '__main__':
             'dataset': [ 'femnist' ],
             'niid': [ True, False ], # or only niid ?
             'model': [ 'cnn' ],
-            'rounds': [ 1000 ],
+            'rounds': [ 500 ],
             'epochs': [ 5 ],
             'selected': [ 10 ],
             'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.5, 50) ], # halves the learning rate every 50 central rounds
+            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -254,15 +264,22 @@ if __name__ == '__main__':
             'dataset': [ 'femnist' ],
             'niid': [ True ],
             'model': [ 'cnn' ],
-            'rounds': [ 1000 ],
-            'epochs': [ 5, 10 ],
-            'selected': [ 5, 10 ],
+            'rounds': [ 500 ],
+            'epochs': [ 5 ],
+            'selected': [ 10 ],
             'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.5, 50) ], # halves the learning rate every 50 central rounds
+            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
-            'algorithm': [ ('fedprox', 1e-1), ('fedyogi', 0.9, 0.99, 1e-4, 10 ** (-2.5)) ],
+            'algorithm': [ 
+                ('fedprox', 1e-3),
+                ('fedprox', 1e-2),
+                ('fedprox', 1e-1),
+                ('fedyogi', 0.9, 0.99, 1e-4, 1e-3), 
+                ('fedyogi', 0.9, 0.99, 1e-4, 1e-2), 
+                ('fedyogi', 0.9, 0.99, 1e-4, 1e-1) 
+            ],
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
             'log': [ False ]
