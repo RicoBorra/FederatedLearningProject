@@ -74,59 +74,7 @@ class Femnist(Dataset):
             x = self.transform(x)
         # image and label
         return x, y
-
-def load(directory: str) -> dict[str, list[tuple[str, Subset]]]:
-    '''
-    Loads local clients `Femnist` datasets divided into three macro groups,
-    which are `training`, `validation` and `testing`.
-
-    Parameters
-    ----------
-    directory: str
-        Directory from which the dataframes `training.parquet` and `testing.parquet` are loaded
-
-    Returns
-    -------
-    dict[str, list[tuple[str, Subset]]]
-        Dictonary with groups of clients' datasets
-
-    Notes
-    -----
-    Each entry of the dictionary is the list of subsets within the selected group,
-    specifically each dataset of the list is a tuple of the client name and its subset 
-    of data from the original `Femnist` dataset of the same group.
-    '''
-
-    # whole datasets are stored in a compressed and efficient format
-    training_frame = pd.read_parquet(os.path.join(directory, 'training.parquet'))
-    testing_frame = pd.read_parquet(os.path.join(directory, 'testing.parquet'))
-    # this operation ensures to have unique indices for each entry and not the 
-    # 'user' column
-    training_frame.reset_index(inplace = True)
-    testing_frame.reset_index(inplace = True)
-    # builds whole datasets and three groups of clients (and corresponding subsets)
-    training_data = Femnist(training_frame)
-    testing_data = Femnist(testing_frame)
-    user_datasets = { 'training': [], 'validation': [], 'testing': [] }
-    # first group is 'training' for clients on whose datasets training of central
-    # model is performed
-    for name, group in training_frame.groupby('user'):
-        subset = Subset(training_data, group.index.values)
-        user_datasets['training'].append((name, subset))
-    # sample 20% of 'training' clients datasets and move them to 'validation' group
-    training_users_count = math.floor(0.8 * len(user_datasets['training']))
-    user_datasets['validation'] = user_datasets['training'][training_users_count:]
-    user_datasets['training'] = user_datasets['training'][:training_users_count]
-    # construct 'testing' group of clients datasets
-    for name, group in testing_frame.groupby('user'):
-        subset = Subset(testing_data, group.index.values)
-        user_datasets['testing'].append((name, subset))
-    # three groups of clients datasets
-    return user_datasets
-
-
-################## FIXME #######################
-
+    
 class RotatedFemnistSubset(Subset):
     '''
     This class represents a single client subset of images and labels subject to
@@ -187,7 +135,56 @@ class RotatedFemnistSubset(Subset):
         x = self.transform(x)
         # image and label
         return x, y
-    
+
+def load(directory: str) -> dict[str, list[tuple[str, Subset]]]:
+    '''
+    Loads local clients `Femnist` datasets divided into three macro groups,
+    which are `training`, `validation` and `testing`.
+
+    Parameters
+    ----------
+    directory: str
+        Directory from which the dataframes `training.parquet` and `testing.parquet` are loaded
+
+    Returns
+    -------
+    dict[str, list[tuple[str, Subset]]]
+        Dictonary with groups of clients' datasets
+
+    Notes
+    -----
+    Each entry of the dictionary is the list of subsets within the selected group,
+    specifically each dataset of the list is a tuple of the client name and its subset 
+    of data from the original `Femnist` dataset of the same group.
+    '''
+
+    # whole datasets are stored in a compressed and efficient format
+    training_frame = pd.read_parquet(os.path.join(directory, 'training.parquet'))
+    testing_frame = pd.read_parquet(os.path.join(directory, 'testing.parquet'))
+    # this operation ensures to have unique indices for each entry and not the 
+    # 'user' column
+    training_frame.reset_index(inplace = True)
+    testing_frame.reset_index(inplace = True)
+    # builds whole datasets and three groups of clients (and corresponding subsets)
+    training_data = Femnist(training_frame)
+    testing_data = Femnist(testing_frame)
+    user_datasets = { 'training': [], 'validation': [], 'testing': [] }
+    # first group is 'training' for clients on whose datasets training of central
+    # model is performed
+    for name, group in training_frame.groupby('user'):
+        subset = Subset(training_data, group.index.values)
+        user_datasets['training'].append((name, subset))
+    # sample 20% of 'training' clients datasets and move them to 'validation' group
+    training_users_count = math.floor(0.8 * len(user_datasets['training']))
+    user_datasets['validation'] = user_datasets['training'][training_users_count:]
+    user_datasets['training'] = user_datasets['training'][:training_users_count]
+    # construct 'testing' group of clients datasets
+    for name, group in testing_frame.groupby('user'):
+        subset = Subset(testing_data, group.index.values)
+        user_datasets['testing'].append((name, subset))
+    # three groups of clients datasets
+    return user_datasets
+
 def load_with_rotated_domains(
         directory: str, 
         n_rotated: int, 
