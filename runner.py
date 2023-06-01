@@ -57,6 +57,7 @@ class ExperimentRunner(object):
 
         for i, experiment in enumerate(self.commands):
             print(f'[+] running experiment {i + 1}/{len(self.commands)}')
+            print(f'[+] {experiment}')
             # invokes a subprocess whose stdout is connected to current shell
             # and waits for termination
             process = subprocess.Popen(experiment, shell = True)
@@ -95,8 +96,21 @@ class ExperimentRunner(object):
             elif type(value) is bool:
                 if value:
                     result += f' --{name}'
-            elif type(value) in [tuple, list]:
+            elif type(value) is tuple:
                 result += f" --{name} {' '.join([ str(x) for x in value ])}"
+            # NOTE repetition
+            elif type(value) is list:
+                # repeats argument multiple times
+                for subarg in value:
+                    if subarg is None:
+                        continue
+                    elif type(subarg) is bool:
+                        if subarg:
+                            result += f' --{name}'
+                    elif type(subarg) is tuple:
+                        result += f" --{name} {' '.join([ str(x) for x in subarg ])}"
+                    else:
+                        result += f' --{name} {subarg}'
             else:
                 result += f' --{name} {value}'
         # yields constructed shell command
@@ -153,7 +167,7 @@ if __name__ == '__main__':
         grid = {
             'seed': [ 0, 42 ],
             'epochs': [ 10 ],
-            'learning_rate': [ 5e-3, 1e-2 ],
+            'lr': [ 5e-3, 1e-2 ],
             'scheduler': [ ('step', 0.5, 1) ], # decays the learning rate every epoch
             'batch_size': [ 256 ],
             'weight_decay': [ 1e-5 ],
@@ -169,7 +183,7 @@ if __name__ == '__main__':
             'seed': [ 0 ],
             'validation_domain_angle': [ None, 0, 15, 30, 45, 60, 75 ],
             'epochs': [ 10 ],
-            'learning_rate': [ 1e-2 ],
+            'lr': [ 1e-2 ],
             'scheduler': [ ('step', 0.5, 1) ], # decays the learning rate every epoch
             'batch_size': [ 256 ],
             'weight_decay': [ 1e-5 ],
@@ -189,8 +203,10 @@ if __name__ == '__main__':
             'rounds': [ 500 ],
             'epochs': [ 1, 5, 10 ],
             'selected': [ 5, 10, 20 ], # with 20 clients crashes on my laptop
-            'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
+            'lr': [ 0.05 ],
+            'decay': [ 
+                ('lr', 'step', 0.75, 50) # only learning rate parameter is decayed over time (every 50 rounds)
+            ],
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -209,11 +225,13 @@ if __name__ == '__main__':
             'dataset': [ 'femnist' ],
             'niid': [ True, False ],
             'model': [ 'cnn' ],
-            'rounds': [ 500 ],
+            'rounds': [5], #[ 500 ],
             'epochs': [ 5 ],
             'selected': [ 10 ],
-            'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
+            'lr': [ 0.05 ],
+            'decay': [ 
+                ('lr', 'step', 0.75, 50) # only learning rate parameter is decayed over time (every 50 rounds)
+            ],
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -236,8 +254,10 @@ if __name__ == '__main__':
             'rounds': [ 500 ],
             'epochs': [ 5 ],
             'selected': [ 2, 5, 8 ],
-            'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
+            'lr': [ 0.05 ],
+            'decay': [ 
+                ('lr', 'step', 0.75, 1) # only learning rate parameter is decayed over time (every 50 rounds)
+            ],
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
@@ -260,12 +280,21 @@ if __name__ == '__main__':
             'rounds': [ 500 ],
             'epochs': [ 5 ],
             'selected': [ 10 ],
-            'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
+            'lr': [ 0.05 ],
+            'decay': [ 
+                [
+                    ('lr', 'step', 0.75, 50), # learning rate parameter is decayed over time (every 50 rounds)
+                    ('beta_l2', 'step', 2.5, 250), # beta_l2 of fedsr multiplied by 2.5 every 250 rounds
+                    ('beta_kl', 'step', 2.5, 250), # beta_kl of fedsr multiplied by 2.5 every 250 rounds
+                ]
+            ],
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
-            'algorithm': [ 'fedavg', ('fedsr', 128, 1e-1, 1e-1) ],
+            'algorithm': [ 
+                'fedavg', 
+                ('fedsr', 128, 1e-1, 1e-1) 
+            ],
             'validation_domain_angle': [ None, 0, 15, 30, 45, 60, 75 ],
             'evaluation': [ 50 ],
             'evaluators': [ 250 ],
@@ -284,8 +313,14 @@ if __name__ == '__main__':
             'rounds': [ 500 ],
             'epochs': [ 5 ],
             'selected': [ 10 ],
-            'learning_rate': [ 0.05 ],
-            'scheduler': [ ('step', 0.75, 50) ], # decays the learning rate every 50 central rounds
+            'lr': [ 0.05 ],
+            'decay': [ 
+                [
+                    ('lr', 'step', 0.75, 50), # learning rate decay
+                    ('mu', 'step', 2.5, 100), # mu parameter of fedprox increased every 100 rounds
+                    ('eta', 'step', 1.25, 250), # eta parameter of fedyogi updated every 250 rounds
+                ]
+            ],
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],

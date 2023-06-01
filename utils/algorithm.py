@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from typing import Any, Iterable, Tuple
 
+from .configuration import AlgorithmConfiguration
 from client import Client
 
 class FedAlgorithm(ABC):
@@ -38,7 +39,7 @@ class FedAlgorithm(ABC):
     >>> updated_state = algorithm.state
     '''
 
-    def __init__(self, state: OrderedDict[str, torch.Tensor], scheduler: torch.optim.lr_scheduler.LRScheduler):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], configuration: AlgorithmConfiguration):
         '''
         Initializes the algorithm with an initial state.
 
@@ -46,17 +47,22 @@ class FedAlgorithm(ABC):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
-        scheduler: torch.optim.lr_scheduler.LRScheduler
-            Learning rate scheduler over multiple server rounds
+        configuration: AlgorithmConfiguration
+            Hyperparameters configuration of the algorithm
         '''
         
         self._state = deepcopy(state)
-        self._scheduler = scheduler
+        self._configuration = configuration
 
     @property
     def state(self) -> OrderedDict[str, torch.Tensor]:
         '''
         Returns the state of central server.
+
+        Returns
+        -------
+        OrderedDict[str, torch.Tensor]
+            Pytorch state dict of model
 
         Notes
         -----
@@ -65,6 +71,19 @@ class FedAlgorithm(ABC):
         '''
         
         return self._state
+    
+    @property
+    def configuration(self) -> AlgorithmConfiguration:
+        '''
+        Returns the configuration of central server.
+
+        Returns
+        -------
+        AlgorithmConfiguration
+            Algorithm configuration dictionary
+        '''
+        
+        return self._configuration
     
     @abstractmethod
     def visit(self, client: Client, model: nn.Module) -> Any:
@@ -93,19 +112,6 @@ class FedAlgorithm(ABC):
         '''
 
         raise NotImplementedError()
-    
-    @property
-    def lr(self) -> float:
-        '''
-        Returns learning rate used by client at current round.
-
-        Returns
-        -------
-        float
-            Current learning rate
-        '''
-
-        return self._scheduler.get_last_lr()[0]
 
 class FedAvg(FedAlgorithm):
     '''
@@ -114,7 +120,7 @@ class FedAvg(FedAlgorithm):
     sizes as weights.
     '''
 
-    def __init__(self, state: OrderedDict[str, torch.Tensor], scheduler: torch.optim.lr_scheduler.LRScheduler):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], configuration: AlgorithmConfiguration):
         '''
         Initializes the algorithm with an initial state.
 
@@ -122,11 +128,11 @@ class FedAvg(FedAlgorithm):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
-        scheduler: torch.optim.lr_scheduler.LRScheduler
-            Learning rate scheduler over multiple server rounds
+        configuration: AlgorithmConfiguration
+            Hyperparameters configuration of the algorithm
         '''
 
-        super().__init__(state, scheduler)
+        super().__init__(state, configuration)
         
         self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
 
@@ -158,25 +164,22 @@ class FedAvg(FedAlgorithm):
         # plain stochastic gradient descent
         # weight decay is L2 (ridge) penalty
         optimizer = torch.optim.SGD(
-                model.parameters(), 
-                lr = self.lr, 
-                momentum = client.args.momentum, 
-                weight_decay = client.args.weight_decay
+            model.parameters(), 
+            lr = self._configuration.lr, 
+            momentum = self._configuration.momentum, 
+            weight_decay = self._configuration.weight_decay
         )
         # train mode to enforce gradient computation
+        print(self._configuration)
         model.train()
         # during local epochs the client model deviates
         # from the original configuration passed by the
         # central server
-        for epoch in range(client.args.epochs):
+        for epoch in range(int(self._configuration.epochs)):
             for x, y in client.loader:
                 x = x.to(client.device)
                 y = y.to(client.device)
                 logits, loss = model.step(x, y, optimizer)
-
-                ## FIXME checks
-                # assert torch.isfinite(logits).all() and np.isfinite(loss)
-
         # clone of updated client parameters and size of local dataset
         update = deepcopy(model.state_dict()), len(client.dataset)
         # appended to round history of updates
@@ -202,9 +205,8 @@ class FedAvg(FedAlgorithm):
             )
         # all updates have been consumed, so they can be removed
         self._updates.clear()
-        # aggregation means the end of current round, so we can update clients learning rate
-        self._scheduler.optimizer.step()
-        self._scheduler.step()
+        # aggregation means the end of current round, so we can update parameters eventually
+        self._configuration.update()
 
 class FedProx(FedAvg):
     '''
@@ -213,7 +215,7 @@ class FedProx(FedAvg):
     sizes as weights and uses a proximal term in optimization.
     '''
 
-    def __init__(self, state: OrderedDict[str, torch.Tensor], scheduler: torch.optim.lr_scheduler.LRScheduler, mu: float = 1.0):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], configuration: AlgorithmConfiguration):
         '''
         Initializes the algorithm with an initial state.
 
@@ -221,15 +223,12 @@ class FedProx(FedAvg):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
-        scheduler: torch.optim.lr_scheduler.LRScheduler
-            Learning rate scheduler over multiple server rounds
-        mu: float
-            Proximal term weight in local loss function (1.0 by default)
+        configuration: AlgorithmConfiguration
+            Hyperparameters configuration of the algorithm
         '''
 
-        super().__init__(state, scheduler)
+        super().__init__(state, configuration)
         
-        self.mu = mu
         self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
 
     def visit(self, client: Client, model: nn.Module) -> Any:
@@ -260,17 +259,18 @@ class FedProx(FedAvg):
         # plain stochastic gradient descent
         # weight decay is L2 (ridge) penalty
         optimizer = torch.optim.SGD(
-                model.parameters(), 
-                lr = self.lr, 
-                momentum = client.args.momentum, 
-                weight_decay = client.args.weight_decay
+            model.parameters(), 
+            lr = self._configuration.lr, 
+            momentum = self._configuration.momentum, 
+            weight_decay = self._configuration.weight_decay
         )
         # train mode to enforce gradient computation
+        print(self._configuration)
         model.train()
         # during local epochs the client model deviates
         # from the original configuration passed by the
         # central server
-        for epoch in range(client.args.epochs):
+        for epoch in range(int(self._configuration.epochs)):
             for x, y in client.loader:
                 x = x.to(client.device)
                 y = y.to(client.device)
@@ -280,7 +280,7 @@ class FedProx(FedAvg):
                 loss = model.criterion(logits, y)
                 loss = model.reduction(loss, y)
                 # add proximal term
-                loss += FedProx.proxterm(mu = self.mu, weights = model.named_parameters(), state = self._state)
+                loss += FedProx.proxterm(mu = self._configuration.mu, weights = model.named_parameters(), state = self._state)
                 # gradient computation and weights update
                 optimizer.zero_grad()
                 loss.backward()
@@ -288,7 +288,6 @@ class FedProx(FedAvg):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
                 # update weights
                 optimizer.step()
-
         # clone of updated client parameters and size of local dataset
         update = deepcopy(model.state_dict()), len(client.dataset)
         # appended to round history of updates
@@ -331,15 +330,7 @@ class FedYogi(FedAvg):
     Particularly, server side, FedYogi is adopted as optimizer.
     '''
 
-    def __init__(
-            self, 
-            state: OrderedDict[str, torch.Tensor],
-            scheduler: torch.optim.lr_scheduler.LRScheduler,
-            beta_1: float = 0.9,
-            beta_2: float = 0.99,
-            tau: float = 1e-4,
-            eta: float = 10 ** (-2.5)
-        ):
+    def __init__(self, state: OrderedDict[str, torch.Tensor], configuration: AlgorithmConfiguration):
         '''
         Initializes the algorithm with an initial state.
 
@@ -347,26 +338,22 @@ class FedYogi(FedAvg):
         ----------
         state: OrderedDict[str, torch.Tensor]
             State dictionary of parameters obtained from a model
-        scheduler: torch.optim.lr_scheduler.LRScheduler
-            Learning rate scheduler over multiple server rounds
+        configuration: AlgorithmConfiguration
+            Hyperparameters configuration of the algorithm
         '''
 
-        super().__init__(state, scheduler)
+        super().__init__(state, configuration)
         
         self._updates: list[tuple[OrderedDict[str, torch.Tensor], int]] = []
-        self.beta_1 = beta_1
-        self.beta_2 = beta_2
-        self.eta = eta
-        self.tau = tau
         self.delta = OrderedDict({ key: torch.zeros(weight.size(), device = weight.device) for key, weight in state.items() })
-        self.v = OrderedDict({ key: tau * tau * torch.ones(weight.size(), device = weight.device) for key, weight in state.items() })
+        self.v = OrderedDict({ key: self._configuration.tau * self._configuration.tau * torch.ones(weight.size(), device = weight.device) for key, weight in state.items() })
 
     def aggregate(self):
         '''
         Updates central model state by computing a weighted average of clients' states with their local datasets' sizes
         and server learning rate.
         '''
-        
+
         # total size is the sum of the sizes from all contributing clients' datasets
         n = sum([ size for _, size in self._updates ])
         # for each architectural part of the state (e.g. 'fc.weight' or 'conv.bias'), the central state is obtained
@@ -379,15 +366,48 @@ class FedYogi(FedAvg):
                 dim = 0
             )
             # updates server delta
-            self.delta[key] = self.beta_1 * self.delta[key] + (1 - self.beta_1) * delta_t
+            self.delta[key] = self._configuration.beta_1 * self.delta[key] + (1 - self._configuration.beta_1) * delta_t
             # squared delta_t for caching
             delta_t_squared = self.delta[key].square()
             # velocity update
-            self.v[key] = self.v[key] - (1 - self.beta_2) * delta_t_squared * (self.v[key] - delta_t_squared).sign()
+            self.v[key] = self.v[key] - (1 - self._configuration.beta_2) * delta_t_squared * (self.v[key] - delta_t_squared).sign()
             # weights state update
-            self._state[key] = self._state[key] + self.eta * self.delta[key] / (self.v[key].sqrt() + self.tau)
+            self._state[key] = self._state[key] + self._configuration.eta * self.delta[key] / (self.v[key].sqrt() + self._configuration.tau)
         # all updates have been consumed, so they can be removed
         self._updates.clear()
-        # aggregation means the end of current round, so we can update clients learning rate
-        self._scheduler.optimizer.step()
-        self._scheduler.step()
+        # aggregation means the end of current round, so we can update parameters eventually
+        print(self._configuration)
+        self._configuration.update()
+
+class FedSr(FedAvg):
+    '''
+    This algorithm is FedSr domain generalization algorithm in federated scenario.
+    '''
+
+    def visit(self, client: Client, model: nn.Module) -> Any:
+        '''
+        Visits single client and runs federated algorithm on it, returning local update.
+
+        Parameters
+        ----------
+        client: Client
+            Terminal client on which the algorithm is executed
+        model: nn.Module
+            Central server model (by reference !!) to be locally trained on the client
+
+        Returns
+        -------
+        tuple[OrderedDict[str, torch.Tensor], int]
+            Update which should be explicitly collectd by `accumulate(...)`
+
+        Notes
+        -----
+        The update consists in a tuple of client trained weights and local dataset size.
+        '''
+        
+        # loads (decayed ?) parameters of fedsr to the model which is expected to have 'beta_kl' and 'beta_l2' attributes
+        model.beta_l2 = self._configuration.beta_l2
+        model.beta_kl = self._configuration.beta_kl
+        print(self._configuration)
+        # executes normal fedavg
+        return super().visit(client, model)

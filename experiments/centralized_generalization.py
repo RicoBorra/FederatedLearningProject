@@ -31,24 +31,24 @@ def set_seed(random_seed):
 def get_arguments():
     epilog = "note: argument \'--scheduler\' accept different learning rate scheduling choices (\'exp\' or \'step\') followed by decaying factor and decaying period\n\n" \
         "examples:\n\n" \
-        ">>> python3 experiments/script.py --batch_size 256 --learning_rate 0.1 --momentum 0.9 --weight_decay 0.0001 --epochs 10 --scheduler exp 0.5\n\n" \
+        ">>> python3 experiments/script.py --batch_size 256 --lr 0.1 --momentum 0.9 --weight_decay 0.0001 --epochs 10 --scheduler exp 0.5\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 256\n" \
         " [+] learning rate: 0.1 decaying exponentially with multiplicative factor 0.5\n" \
         " [+] SGD momentum: 0.9\n" \
         " [+] SGD weight decay penalty: 0.0001\n" \
         " [+] running epoch for training and validation: 10\n\n" \
-        ">>> python3 experiments/script.py --batch_size 512 --learning_rate 0.01 --epochs 100 --scheduler step 0.75 3\n\n" \
+        ">>> python3 experiments/script.py --batch_size 512 --lr 0.01 --epochs 100 --scheduler step 0.75 3\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 512\n" \
         " [+] learning rate: 0.1 decaying using step function with multiplicative factor 0.75 every 3 epochs\n" \
         " [+] running epoch for training and validation: 100\n\n" \
-        ">>> python3 experiments/script.py --batch_size 512 --learning_rate 0.01 --epochs 100 --scheduler linear 0.1 8\n\n" \
+        ">>> python3 experiments/script.py --batch_size 512 --lr 0.01 --epochs 100 --scheduler linear 0.1 8\n\n" \
         "This command executes the experiment using\n" \
         " [+] batch size: 512\n" \
         " [+] learning rate: 0.1 is starting factor of linear growth for 8 epochs\n" \
         " [+] running epoch for training and validation: 100\n\n" \
-        ">>> python3 experiments/script.py --validation_domain_angle 45 --batch_size 512 --learning_rate 0.01 --epochs 100 --scheduler onecycle 0.1\n\n" \
+        ">>> python3 experiments/script.py --validation_domain_angle 45 --batch_size 512 --lr 0.01 --epochs 100 --scheduler onecycle 0.1\n\n" \
         "This command executes the experiment using\n" \
         " [+] validation domain angle: uses datasets from client whose image are rotated of 45 degrees for validation\n" \
         " [+] batch size: 512\n" \
@@ -62,7 +62,7 @@ def get_arguments():
     )
     parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
     parser.add_argument('--epochs', default = 10, type = int, help = 'number of local epochs')
-    parser.add_argument('--learning_rate', type = float, default = 0.05, help = 'learning rate')
+    parser.add_argument('--lr', type = float, default = 0.05, help = 'learning rate')
     parser.add_argument('--batch_size', type = int, default = 512, help = 'batch size')
     parser.add_argument('--weight_decay', type = float, default = 0, help = 'weight decay')
     parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
@@ -118,7 +118,7 @@ def load_model(args, n_batches: int):
     )
     model.optimizer = torch.optim.SGD(
         model.parameters(),
-        lr = args.learning_rate, 
+        lr = args.lr, 
         momentum = args.momentum, 
         weight_decay = args.weight_decay
     )
@@ -245,7 +245,7 @@ if __name__ == '__main__':
     # set seed
     set_seed(args.seed)
     # simulation identifier
-    identifier = f"dg_emnist{'' if args.validation_domain_angle is None else f'_va{args.validation_domain_angle}'}_s{args.seed}_e{args.epochs}_lr{args.learning_rate}_lrs{':'.join(args.scheduler)}_bs{args.batch_size}_m{args.momentum}_wd{args.weight_decay}"
+    identifier = f"dg_emnist{'' if args.validation_domain_angle is None else f'_va{args.validation_domain_angle}'}_s{args.seed}_e{args.epochs}_lr{args.lr}_lrs{':'.join(args.scheduler)}_bs{args.batch_size}_m{args.momentum}_wd{args.weight_decay}"
     # log
     wandb.init(
         mode = 'online' if args.log else 'disabled',
@@ -257,7 +257,7 @@ if __name__ == '__main__':
             'validation_domain_angle': args.validation_domain_angle,
             'model': 'cnn',
             'epochs': args.epochs,
-            'learning_rate': args.learning_rate,
+            'lr': args.lr,
             'scheduler': ':'.join(args.scheduler),
             'batch_size': args.batch_size,
             'weight_decay': args.weight_decay,
@@ -272,7 +272,7 @@ if __name__ == '__main__':
     print(f"  [-] angles: {' '.join([ str(a) for a in angles])}")
     print(f"  [-] validation domain angle: {args.validation_domain_angle if args.validation_domain_angle else 'none'}")
     print(f'  [-] batch size: {args.batch_size}')
-    print(f'  [-] learning rate: {args.learning_rate}')
+    print(f'  [-] learning rate: {args.lr}')
     print(f'  [-] momentum: {args.momentum}')
     print(f'  [-] weight decay L2: {args.weight_decay}')
     print(f'  [-] epochs: {args.epochs}')
