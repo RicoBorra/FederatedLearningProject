@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import datasets.femnist as femnist
 from models import cnn
-from utils.reduction import MeanReduction
+from core.reduction import MeanReduction
 
 def set_seed(random_seed):
     random.seed(random_seed)

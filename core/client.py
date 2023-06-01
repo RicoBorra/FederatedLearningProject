@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import Subset, DataLoader
 from typing import Any, Tuple
 
-from utils.evaluation import FederatedMetrics
+from .evaluation import FederatedMetrics
 
 class Client(object):
     '''

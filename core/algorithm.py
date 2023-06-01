@@ -7,7 +7,7 @@ import torch.nn as nn
 from typing import Any, Iterable, Tuple
 
 from .configuration import AlgorithmConfiguration
-from client import Client
+from core.client import Client
 
 class FedAlgorithm(ABC):
     '''
@@ -170,7 +170,6 @@ class FedAvg(FedAlgorithm):
             weight_decay = self._configuration.weight_decay
         )
         # train mode to enforce gradient computation
-        print(self._configuration)
         model.train()
         # during local epochs the client model deviates
         # from the original configuration passed by the
@@ -265,7 +264,6 @@ class FedProx(FedAvg):
             weight_decay = self._configuration.weight_decay
         )
         # train mode to enforce gradient computation
-        print(self._configuration)
         model.train()
         # during local epochs the client model deviates
         # from the original configuration passed by the
@@ -376,7 +374,6 @@ class FedYogi(FedAvg):
         # all updates have been consumed, so they can be removed
         self._updates.clear()
         # aggregation means the end of current round, so we can update parameters eventually
-        print(self._configuration)
         self._configuration.update()
 
 class FedSr(FedAvg):
@@ -408,6 +405,5 @@ class FedSr(FedAvg):
         # loads (decayed ?) parameters of fedsr to the model which is expected to have 'beta_kl' and 'beta_l2' attributes
         model.beta_l2 = self._configuration.beta_l2
         model.beta_kl = self._configuration.beta_kl
-        print(self._configuration)
         # executes normal fedavg
         return super().visit(client, model)

@@ -12,13 +12,13 @@ import wandb
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import datasets.femnist as femnist
-import utils.algorithm as algorithm
-import utils.reduction as reduction
-import utils.configuration as configuration
+import core.algorithm as algorithm
+import core.reduction as reduction
+import core.configuration as configuration
 from models.cnn import CNN
 from models.logistic_regression import LogisticRegression
-import client
-import server
+import core.client as client
+from core.server import Server
 
 def set_seed(seed: int, deterministic: bool = True):
     '''
@@ -266,7 +266,7 @@ if __name__ == '__main__':
         identifier += '_dc' + ':'.join(decay)
     # server uses training clients and validation clients when fitting the central model
     # clients from testing group should be used at the very end
-    server = server.Server(
+    server = Server(
         algorithm = initialize_federated_algorithm_with_configuration(args), 
         model = model,
         clients = clients,

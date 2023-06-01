@@ -8,9 +8,9 @@ from tqdm import tqdm
 from typing import Any
 import wandb
 
-from client import Client
-from utils.selection import UniformSelection, HybridSelection, PowerOfChoiceSelection
-from utils.evaluation import FederatedMetrics
+from .client import Client
+from .selection import UniformSelection, HybridSelection, PowerOfChoiceSelection
+from .evaluation import FederatedMetrics
 
 class Server(object):
     '''
