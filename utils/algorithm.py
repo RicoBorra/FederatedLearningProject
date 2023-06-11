@@ -50,7 +50,7 @@ class FedAlgorithm(ABC):
             Learning rate scheduler over multiple server rounds
         '''
         
-        self._state = deepcopy(state)
+        self._state = deepcopy(state) if state is not None else None
         self._scheduler = scheduler
 
     @property
@@ -391,3 +391,89 @@ class FedYogi(FedAvg):
         # aggregation means the end of current round, so we can update clients learning rate
         self._scheduler.optimizer.step()
         self._scheduler.step()
+
+class FedLeastSquares(FedAlgorithm):
+    '''
+    This algorithm implements federated least squares for the resolution of a ridge regression problem
+    in a closed form.
+    '''
+
+    def __init__(
+        self,
+        state: OrderedDict[str, torch.Tensor],
+        num_features: int,
+        num_classes: int,
+        lmbda: float,
+        device: torch.device
+    ):
+        '''
+        Initializes the algorithm with an initial state.
+
+        Parameters
+        ----------
+        state: OrderedDict[str, torch.Tensor]
+            State dictionary of parameters obtained from a model
+        scheduler: torch.optim.lr_scheduler.LRScheduler
+            Learning rate scheduler over multiple server rounds
+        '''
+
+        super().__init__(state, None)
+        
+        self.num_features = num_features
+        self.num_classes = num_classes
+        self.xtx = torch.zeros((num_features + 1, num_features + 1), device = device) 
+        self.xty = torch.zeros((num_features + 1, num_classes), device = device)
+        self.device = device
+        self.lmbda = lmbda
+
+        self._n_samples = 0
+
+    def visit(self, client: Client, model: nn.Module = None) -> Any:
+        '''
+        Visits single client and runs federated algorithm on it, returning local update.
+
+        Parameters
+        ----------
+        client: Client
+            Terminal client on which the algorithm is executed
+        model: nn.Module
+            Central server model (by reference !!) to be locally trained on the client
+
+        Returns
+        -------
+        tuple[OrderedDict[str, torch.Tensor], int]
+            Update which should be explicitly collectd by `accumulate(...)`
+
+        Notes
+        -----
+        The update consists in a tuple of client trained weights and local dataset size.
+        '''
+
+        self._n_samples += len(client.dataset)
+        
+        # loads clients data
+        loader = torch.utils.data.DataLoader(client.dataset, batch_size = len(client.dataset))
+        x, y = next(iter(loader))
+        # appends one column (for bias) to features matrix
+        ones = torch.ones((x.shape[0], 1), device = self.device)
+        x = torch.cat((ones, x), dim = -1).to(self.device)
+        # center class label in range [-1, 1]
+        y = (torch.nn.functional.one_hot(y, num_classes = self.num_classes) * 2) - 1
+        y = y.type(torch.float32).to(self.device)
+        # computes aggregated matrix as updates
+        xtx = x.T @ x
+        xty = x.T @ y
+        # online aggregation
+        self.xtx += xtx
+        self.xty += xty
+        # returns it to outside
+        return xtx, xty
+
+    def aggregate(self):
+        '''
+        Updates central model state by computing a weighted average of clients' states with their local datasets' sizes.
+        '''
+
+        # computes closed form of ridge regression
+        regularized_xtx = self.xtx + self.lmbda * torch.eye(n = self.num_features + 1, device = self.device)
+        self._state['beta'] = torch.linalg.solve(regularized_xtx, self.xty)

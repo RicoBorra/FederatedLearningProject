@@ -1,15 +1,13 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F 
 from typing import Callable
 
-class RidgeClassifier(nn.Module):
+class RidgeRegression(nn.Module):
     '''
-    Simple logistic regression model taking 2D images in input shaped like `[CHANNELS, WIDTH, HEIGHT]`
-    and emitting `num_classes` logits. 
+    Simple ridge regression model emitting `num_classes` logits. 
     '''
 
-    def __init__(self, num_inputs: int, num_classes: int):
+    def __init__(self, num_inputs: int, num_classes: int, device: torch.device):
         '''
         Initializes a logistic regression classifier.
 
@@ -19,17 +17,15 @@ class RidgeClassifier(nn.Module):
             Number of input features (in total, so `CHANNELS * WIDTH * HEIGHT`)
         num_classes: int
             Number of classes
-        loss_reduction: Callable
-            Loss reduction, see `MeanReduction` or `SumReduction` or `HardNegativeMining`
         '''
 
         super().__init__()
 
         self.num_inputs = num_inputs
         self.num_classes = num_classes
-        self.linear = nn.Linear(in_features = num_inputs, out_features = num_classes, bias = False)
-        self.criterion = nn.MSELoss()
-        self.optimizer = None
+        self.beta = nn.Parameter(torch.empty(size = (num_inputs + 1, num_classes), device = device, dtype = torch.float32))
+        self.criterion = nn.MSELoss(reduction = 'mean')
+        self.device = device
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -41,9 +37,7 @@ class RidgeClassifier(nn.Module):
             Logits
         '''
 
-        x = x.view(x.size(0), -1)
-        x = self.linear(x)
-        return x
+        return x @ self.beta
 
     def step(self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer) -> tuple[torch.Tensor, float]:
         '''
@@ -64,13 +58,7 @@ class RidgeClassifier(nn.Module):
             Linear logits and reduced loss
         '''
 
-        logits = self(x)
-        loss = self.criterion(logits, y)
-        loss = self.reduction(loss, y)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        return logits, loss.item()
+        return None, None
 
     def evaluate(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, float]:
         '''
@@ -88,8 +76,14 @@ class RidgeClassifier(nn.Module):
         tuple[torch.Tensor, torch.Tensor, float]
             Linear logits, predicted labels, reduced loss and accuracy
         '''
-        y_binarized = (F.one_hot(y, num_classes=62)*2)-1
+
+        # appends one column (for bias) to features matrix
+        ones = torch.ones((x.shape[0], 1), device = self.device)
+        x = torch.cat((ones, x), dim = -1)
+        # center class label in range [-1, 1]
+        y_binarized = (torch.nn.functional.one_hot(y, num_classes = self.num_classes) * 2) - 1
         y_binarized = y_binarized.type(torch.float32)
+        # predicts as usual
         logits = self(x)
         loss = self.criterion(logits, y_binarized)
         predicted = logits.argmax(1)

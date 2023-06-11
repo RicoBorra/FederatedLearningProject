@@ -78,7 +78,8 @@ class UniformSelection(ClientSelection):
             List of clients selected for training
         '''
 
-        return random.choices(self._clients, k = self._args.selected)
+        k = self._args.selected if self._args.selected else len(self._clients)
+        return random.choices(self._clients, k = k)
 
 class HybridSelection(ClientSelection):
     '''

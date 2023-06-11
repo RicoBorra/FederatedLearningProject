@@ -155,7 +155,7 @@ class RotatedFemnistSubset(Subset):
         # image and label
         return x, y
 
-def load(directory: str) -> dict[str, list[tuple[str, Subset]]]:
+def load(directory: str, transformed: bool = False, training_fraction = 0.80) -> dict[str, list[tuple[str, Subset]]]:
     '''
     Loads local clients `Femnist` datasets divided into three macro groups,
     which are `training`, `validation` and `testing`.
@@ -185,8 +185,8 @@ def load(directory: str) -> dict[str, list[tuple[str, Subset]]]:
     training_frame.reset_index(inplace = True)
     testing_frame.reset_index(inplace = True)
     # builds whole datasets and three groups of clients (and corresponding subsets)
-    training_data = Femnist(training_frame)
-    testing_data = Femnist(testing_frame)
+    training_data = Femnist(training_frame) if not transformed else Transformed_Femnist(training_frame)
+    testing_data = Femnist(testing_frame) if not transformed else Transformed_Femnist(testing_frame)
     user_datasets = { 'training': [], 'validation': [], 'testing': [] }
     # first group is 'training' for clients on whose datasets training of central
     # model is performed
@@ -194,7 +194,7 @@ def load(directory: str) -> dict[str, list[tuple[str, Subset]]]:
         subset = Subset(training_data, group.index.values)
         user_datasets['training'].append((name, subset))
     # sample 20% of 'training' clients datasets and move them to 'validation' group
-    training_users_count = math.floor(0.8 * len(user_datasets['training']))
+    training_users_count = math.floor(training_fraction * len(user_datasets['training']))
     user_datasets['validation'] = user_datasets['training'][training_users_count:]
     user_datasets['training'] = user_datasets['training'][:training_users_count]
     # construct 'testing' group of clients datasets

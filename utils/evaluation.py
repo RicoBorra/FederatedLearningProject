@@ -108,7 +108,7 @@ class FederatedMetrics(object):
     def __init__(
         self, 
         n_classes: int = 62, 
-        device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device: torch.device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
     ):
         '''
         Constructs the set of metrics for a set of clients to be evaluated.
@@ -182,16 +182,19 @@ class FederatedMetrics(object):
         Computes metrics' results using accumulated states through updates.
         '''
 
+        # empty computation, no results
+        if numpy.allclose(self.loss._normalizer, 0):
+            return
         # safe guard used to avoid infinity explosion of empty classes
         epsilon = 1e-6
         # confusion matrix where vertical axis is target, horizontal is predictions
         confusion_matrix = self.confusion_matrix.compute()
+        # total number of samples
+        n_samples = confusion_matrix.sum()
         # diagonal are true positives of each class
         n_correctly_predicted = confusion_matrix.diagonal(offset = 0)
         # summing along each row gives the true number of samples of each class
         n_class_samples = confusion_matrix.sum(1) + epsilon
-        # total number of samples
-        n_samples = confusion_matrix.sum()
         # mask is employed to filter only non empty classes for metrics
         mask = n_class_samples > epsilon
         # class accuracy is a vector of accuracies for each class
@@ -222,4 +225,4 @@ class FederatedMetrics(object):
             Metric result
         '''
 
-        return self.results[metric]
+        return self.results[metric] if self.results[metric] else 0.0

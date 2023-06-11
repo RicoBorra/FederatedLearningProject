@@ -61,11 +61,11 @@ class Server(object):
         '''
 
         # progress bar for training 'args.selected' local clients at each round
-        locals = tqdm(total = self.args.selected, desc = '[+] local models training')
+        locals = tqdm(total = self.args.selected if self.args.selected else len(self.clients['training']), desc = '[+] local models training')
         # logs both to screen and remotely
         self.initialize_logger()
         # runs 'args.rounds' rounds of central training
-        for round in tqdm(range(self.args.rounds), desc = '[+] central server training'):
+        for round in tqdm(range(getattr(self.args, 'rounds', 1)), desc = '[+] central server training'):
             # progress bar is reinitialized to zero
             locals.reset()
             # selects 'args.selected' training clients and trains them
@@ -84,14 +84,14 @@ class Server(object):
                 # computed with the federated learning algorithm
                 self.model.load_state_dict(self.algorithm.state)
                 # eventually evaluates the model on training and validation cloents
-                if round % self.args.evaluation == 0:
+                if self.args.evaluation is not None and round % self.args.evaluation == 0:
                     # subset evaluation
                     self.evaluate(round, fraction = self.args.evaluators)
         # final evaluation
         with torch.no_grad():
             # eventually involves clients from `testing`
             self.evaluate(
-                self.args.rounds, 
+                getattr(self.args, 'rounds', 1), 
                 fraction = self.args.evaluators, 
                 testing = getattr(self.args, 'testing', True)
             )
@@ -117,30 +117,34 @@ class Server(object):
         '''
 
         # subset evaluation
-        k = math.floor(fraction * len(self.clients['training'])) if fraction < 1.0 else min(len(self.clients['training']), int(fraction))
+        k = len(self.clients['training']) if fraction is None else math.floor(fraction * len(self.clients['training'])) if fraction < 1.0 else min(len(self.clients['training']), int(fraction))
         validators = random.sample(self.clients['training'], k = k)
         # evaluation of clients from 'training' group
         for client in tqdm(validators, desc = '[+] evaluating training clients'):
             client.validate(self.model, self.evaluators['training'])
+        # compute metrics at the end of the round
+        self.evaluators['training'].compute()
         # subset evaluation
-        k = math.floor(fraction * len(self.clients['validation'])) if fraction < 1.0 else min(len(self.clients['validation']), int(fraction))
+        k = len(self.clients['validation']) if fraction is None else math.floor(fraction * len(self.clients['validation'])) if fraction < 1.0 else min(len(self.clients['validation']), int(fraction))
         validators = random.sample(self.clients['validation'], k = k)
         # evaluation of clients from 'validation' group
         for client in tqdm(validators, desc = '[+] evaluating validation clients'):
             client.validate(self.model, self.evaluators['validation'])
-        # compute metrics at the end of the round
-        self.evaluators['training'].compute()
+        # metrics on validation
         self.evaluators['validation'].compute()
-        # log metrics on screen
+        # training metrics
         print(
-            # training metrics
             f"[+] accuracy: {100 * self.evaluators['training']['accuracy']:.3f}%, "
             f"weighted accuracy: {100 * self.evaluators['training']['weighted_accuracy']:.3f}%, "
-            f"loss: {self.evaluators['training']['loss']:.5f} (training)\n"
-            # validation metrics
+            f"loss: {self.evaluators['training']['loss']:.5f} (training)",
+            flush = True
+        )
+        # validation metrics
+        print(
             f"[+] accuracy: {100 * self.evaluators['validation']['accuracy']:.3f}%, "
             f"weighted accuracy: {100 * self.evaluators['validation']['weighted_accuracy']:.3f}%, "
-            f"loss: {self.evaluators['validation']['loss']:.5f} (validation)"
+            f"loss: {self.evaluators['validation']['loss']:.5f} (validation)",
+            flush = True
         )
         # log metrics remotely to weights and biases
         wandb.log({
@@ -171,7 +175,7 @@ class Server(object):
                 # testing metrics
                 f"[+] accuracy: {100 * self.evaluators['testing']['accuracy']:.3f}%, "
                 f"weighted accuracy: {100 * self.evaluators['testing']['weighted_accuracy']:.3f}%, "
-                f"loss: {self.evaluators['testing']['loss']:.5f} (validation)"
+                f"loss: {self.evaluators['testing']['loss']:.5f} (testing)"
             )
             # log metrics remotely to weights and biases
             wandb.log({
@@ -217,7 +221,7 @@ class Server(object):
         '''
 
         # uniform selection is default, all training clients are equally likely of being selected each round
-        if not self.args.selection or self.args.selection[0] == 'uniform':
+        if not getattr(self.args, 'selection', None) or self.args.selection[0] == 'uniform':
             self.selection = UniformSelection(server = self)
         # a fraction of clients shares a certain probability, while remainng clients have the left probability
         elif self.args.selection[0] == 'hybrid':
