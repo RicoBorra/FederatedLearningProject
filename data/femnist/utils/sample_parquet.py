@@ -129,7 +129,7 @@ for f in files:
                 cnum_samples = num_new_samples - ctot_num_samples
                 indices = range(cnum_samples)
                 new_indices = rng.sample(indices, cnum_samples)
-                cdata = cdata[new_indices]
+                cdata = cdata.iloc[new_indices]
             
             user_data[user] = cdata
 

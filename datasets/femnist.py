@@ -14,7 +14,7 @@ class Femnist(Dataset):
     of a `Femnist` dataset instance associated to its user images and labels.
     '''
 
-    def __init__(self, frame: pd.DataFrame, normalize: bool = True):
+    def __init__(self, frame: pd.DataFrame, normalize: bool = True, dtype=torch.float32):
         '''
         Initializes a whole femnist dataset from a dataframe.
 
@@ -38,7 +38,7 @@ class Femnist(Dataset):
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,)),
         ]) if normalize else transforms.ToTensor()
-
+        self.dtype = dtype
 
     def __len__(self) -> int:
         '''
@@ -72,6 +72,25 @@ class Femnist(Dataset):
         # number of channels as first dimension
         if self.transform is not None:
             x = self.transform(x)
+        # image and label
+        return x.type(dtype=self.dtype), y
+    
+class Transformed_Femnist(Dataset):
+    def __init__(self, frame: pd.DataFrame):
+
+        self.frame = frame
+        self.num_features = frame.shape[1] - 2
+
+
+    def __len__(self) -> int:
+
+        return self.frame.shape[0]
+
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
+
+        x, y = self.frame.iloc[index, 2:].values, self.frame.iloc[index, 1]
+        
+        x = torch.Tensor(x.astype(np.float32))
         # image and label
         return x, y
     
