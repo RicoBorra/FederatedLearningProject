@@ -143,6 +143,7 @@ if __name__ == '__main__':
     parser.add_argument('--federated_dg', action = 'store_true', default = False, help = 'run federated femnist experiments in domain generalization setting')
     parser.add_argument('--federated_lsq', action = 'store_true', default = False, help = 'run federated femnist experiments using federated least squares algorithm')
     parser.add_argument('--federated_svrg', action = 'store_true', default = False, help = 'run federated femnist experiments using SVRG accelerator as optimizer')
+    parser.add_argument('--federated_transformed_baseline', action = 'store_true', default = False, help = 'run federated femnist experiments on transformed femnist (both SGD and SVRG)')
     arguments = parser.parse_args()
     # checkpoints directory for state dictionaries
     if not os.path.exists('checkpoints'):
@@ -310,9 +311,10 @@ if __name__ == '__main__':
         script = 'experiments/federated_least_squares.py',
         grid = {
             'seed': [ 0 ],
-            'dataset': [ 'femnist_rocket2d_pca', 'femnist_vgg_pca' ],
-            'niid': [ True, False ],
-            'selected': [ 50, 100, 250, 500, 1000, None ],
+            'dataset': [ 'femnist_vgg', 'femnist_vgg_pca', 'femnist_rocket2d', 'femnist_rocket2d_pca' ],
+            'niid': [ False, True ],
+            'selected': [ None ],
+            'training_fraction': [ .80, .90, .95, 1.0 ],
             'algorithm': [ 'fedlsq' ],
             'log': [ arguments.log ]
         },
@@ -339,6 +341,28 @@ if __name__ == '__main__':
             'log': [ arguments.log ]
         },
         enable = arguments.federated_svrg
+    )
+    # federated baseline with SVRG accelerator
+    runner.schedule(
+        script = 'experiments/federated_baseline.py',
+        grid = {
+            'seed': [ 0 ],
+            'dataset': [ 'femnist_rocket2d_pca', 'femnist_vgg_pca', 'femnist_rocket2d', 'femnist_vgg' ],
+            'niid': [ False, True ],
+            'rounds': [ 500 ],
+            'epochs': [ 5, 10 ],
+            'selected': [ 10, 20 ], # with 20 clients crashes on my laptop
+            'learning_rate': [ 0.05 ],
+            'scheduler': [ ('step', 0.75, 50) ], # scheduler ignore in fedsvrg
+            'batch_size': [ 64 ],
+            'weight_decay': [ 0 ],
+            'momentum': [ 0.9 ],
+            'algorithm': [ 'fedavg', 'fedsvrg' ],
+            'evaluation': [ 50 ],
+            'evaluators': [ 250 ],
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_transformed_baseline
     )
     # run all experiments
     runner.run()

@@ -115,7 +115,8 @@ def get_arguments() -> Any:
         # TODO: write epilog for R2D2
     )
     
-    parser.add_argument('--lmbda', type = float, default = 1.0, help = 'regualarization parameter of federrated least squares')
+    parser.add_argument('--lmbda', type = float, default = 1.0, help = 'regularization parameter of federated least squares')
+    parser.add_argument('--training_fraction', type = float, default = 1.0, choices = [ .80, .90, .95, 1.0 ], help = 'fraction of clients used for training (left ones are for validation)')
     parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
     parser.add_argument('--dataset', type = str, choices = ['femnist_rocket2d', 'femnist_vgg', 'femnist_rocket2d_pca', 'femnist_vgg_pca'], default = 'femnist_rocket2d', help = 'dataset name')
     parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default), only on FEMNIST dataset')
@@ -149,7 +150,7 @@ if __name__ == '__main__':
             f'niid_{dataset_type}' if args.niid else f'iid_{dataset_type}'
         ),
         transformed = True,
-        training_fraction = 1.0
+        training_fraction = args.training_fraction
     )
     print('done')
     # client construction by dividing them in three groups (training, validation, testing)

@@ -612,3 +612,147 @@ class FedAvgSVRG(FedAvg):
         self._updates.clear()
         # aggregation means the end of current round, so we can update clients learning rate
         
+
+class FedAvgTransformedSVRG(FedAvg):
+
+    def __init__(self, state: OrderedDict[str, torch.Tensor]):
+        super().__init__(state, None)
+
+    def visit(self, client: Client, model: nn.Module) -> Any:
+
+        weight_estimate = self._state
+        gradient_estimates = [ None for _ in model.parameters() ]
+        loss_estimates = [ None for _ in model.parameters() ]
+        lr = client.args.learning_rate
+        local_weight = deepcopy(self._state)
+        running_avg = deepcopy(local_weight)
+        running_size = 0
+        weight_decay = client.args.weight_decay
+        
+        if isinstance(next(iter(model.parameters())), nn.Parameter) == False:
+            raise NotImplementedError()
+
+        # train mode to enforce gradient computation
+        model.train()
+        # during local epochs the client model deviates
+        # from the original configuration passed by the
+        # central server
+
+        for epoch in range(client.args.epochs):
+
+            # compute weight estimate and gradient estimate
+            if epoch % 2 == 0:
+                weight_estimate = running_avg
+                running_avg = deepcopy(local_weight)
+                running_size = 0
+                # FIXME losses = []
+                # FIXME sizes = []
+                total_loss = 0.0
+                total_size = 0
+
+                model.load_state_dict(weight_estimate)
+
+                for x, y in client.loader:
+                    x = x.to(client.device)
+                    y = y.to(client.device)
+                    # appends one column (for bias) to features matrix
+                    ones = torch.ones((x.shape[0], 1), device = client.device)
+                    x = torch.cat((ones, x), dim = -1)
+                    # center class label in range [-1, 1]
+                    y_binarized = (torch.nn.functional.one_hot(y, num_classes = 62) * 2) - 1
+                    y_binarized = y_binarized.type(torch.float32)
+                    # model.load_state_dict(weight_estimate)
+                    logits = model(x)
+                    # central model loss and reduction
+                    loss = model.criterion(logits, y_binarized)
+                    # loss = model.reduction(loss, y)
+                    loss = loss.mean()
+                    size = y.shape[0]
+                    # FIXME losses.append(loss * size)
+                    # FIXME sizes.append(size)
+                    total_loss += loss * size
+                    total_size += size
+
+                # FIXME total_loss = sum(losses) / sum(sizes)
+                total_loss = total_loss / total_size
+                model.zero_grad()
+                total_loss.backward()
+
+                for i, p in enumerate(model.parameters()):
+                    gradient_estimates[i] = p.grad.detach()
+    
+            # do the regular training protocol
+            for x, y in client.loader:
+                x = x.to(client.device)
+                y = y.to(client.device)
+                # appends one column (for bias) to features matrix
+                ones = torch.ones((x.shape[0], 1), device = client.device)
+                x = torch.cat((ones, x), dim = -1)
+                # center class label in range [-1, 1]
+                y_binarized = (torch.nn.functional.one_hot(y, num_classes = 62) * 2) - 1
+                y_binarized = y_binarized.type(torch.float32)
+                # needs to be computed first so we load local weight only once
+                model.load_state_dict(weight_estimate)
+                logits = model(x)
+                # loss of the best estimate
+                loss2 = model.criterion(logits, y_binarized)
+                loss2 = loss2.mean()
+
+                model.zero_grad()
+                loss2.backward()
+                for i, p in enumerate(model.parameters()):
+                    loss_estimates[i] = p.grad.detach()
+
+
+                model.load_state_dict(local_weight)
+                logits = model(x)
+                # central model loss 
+                loss1 = model.criterion(logits, y_binarized)
+                loss1 = loss1.mean()
+            
+                l2penalty = weight_decay * sum([p.norm() for p in model.parameters()])
+
+                loss = loss1 + weight_decay * l2penalty
+                model.zero_grad()
+                loss.backward()
+
+                # SVRG update rule
+                for i, p in enumerate(model.parameters()):
+                    if p.grad is None:
+                        continue
+                    p = p - lr * (p.grad - loss_estimates[i] + gradient_estimates[i])
+
+                local_weight = model.state_dict()
+                # compute runnning average of model weights, to be used as estimate
+                for run, cur in zip(running_avg.values(), local_weight.values()):
+                    run = (run * running_size + cur) / (running_size + 1)
+                running_size += 1
+                ## FIXME checks
+                # assert torch.isfinite(logits).all() and np.isfinite(loss)
+
+        # clone of updated client parameters and size of local dataset
+        update = deepcopy(model.state_dict()), len(client.dataset)
+        # appended to round history of updates
+        self._updates.append(update)
+        # returns it to outside
+        return update
+    
+    def aggregate(self):
+        '''
+        Updates central model state by computing a weighted average of clients' states with their local datasets' sizes.
+        '''
+        
+        # total size is the sum of the sizes from all contributing clients' datasets
+        n = sum([ size for _, size in self._updates ])
+        # for each architectural part of the state (e.g. 'fc.weight' or 'conv.bias'), the central state is obtained
+        # by averaging all clients state of the same part
+        for key in self._state.keys():
+            # detach is invoked to enforce the detachment from autograd graph when making computations on the resulting
+            # object
+            self._state[key] = torch.sum(
+                torch.stack([ size / n * weights[key].detach() for weights, size in self._updates ]),
+                dim = 0
+            )
+        # all updates have been consumed, so they can be removed
+        self._updates.clear()
+        # aggregation means the end of current round, so we can update clients learning rate

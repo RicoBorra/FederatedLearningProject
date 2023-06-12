@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from typing import Callable
 
 class RidgeRegression(nn.Module):
     '''
@@ -23,7 +22,7 @@ class RidgeRegression(nn.Module):
 
         self.num_inputs = num_inputs
         self.num_classes = num_classes
-        self.beta = nn.Parameter(torch.empty(size = (num_inputs + 1, num_classes), device = device, dtype = torch.float32))
+        self.beta = nn.Parameter(torch.ones(size = (num_inputs + 1, num_classes), device = device, dtype = torch.float32))
         self.criterion = nn.MSELoss(reduction = 'mean')
         self.device = device
 
@@ -39,7 +38,7 @@ class RidgeRegression(nn.Module):
 
         return x @ self.beta
 
-    def step(self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer) -> tuple[torch.Tensor, float]:
+    def step(self, x: torch.Tensor, y: torch.Tensor, optimizer: torch.optim.Optimizer, augment: bool = True) -> tuple[torch.Tensor, float]:
         '''
         Trains the model on a single batch and updates parameters.
 
@@ -58,10 +57,21 @@ class RidgeRegression(nn.Module):
             Linear logits and reduced loss
         '''
 
+        if augment:
+            # appends one column (for bias) to features matrix
+            ones = torch.ones((x.shape[0], 1), device = self.device)
+            x = torch.cat((ones, x), dim = -1)
+        # center class label in range [-1, 1]
+        y_binarized = (torch.nn.functional.one_hot(y, num_classes = self.num_classes) * 2) - 1
+        y_binarized = y_binarized.type(torch.float32)
+        # computes as usual
         logits = self(x)
-        loss = self.criterion(logits, y)
+        loss = self.criterion(logits, y_binarized)
         optimizer.zero_grad()
         loss.backward()
+        
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        
         optimizer.step()
         return logits, loss.item()
 

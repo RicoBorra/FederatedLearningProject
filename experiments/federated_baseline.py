@@ -16,6 +16,7 @@ import utils.algorithm as algorithm
 import utils.reduction as reduction
 from models.cnn import CNN
 from models.logistic_regression import LogisticRegression
+from models.ridge import RidgeRegression
 import client
 import server
 
@@ -71,7 +72,7 @@ def initialize_learning_rate_scheduler(args: Any) -> torch.optim.lr_scheduler.LR
     # default, no scheduling
     return torch.optim.lr_scheduler.LambdaLR(dummy, lambda round: 1)
 
-def initialize_model(args: Any) -> torch.nn.Module:
+def initialize_model(args: Any, num_features: int, num_classes: int, device: torch.device, transformed_dataset: bool = False) -> torch.nn.Module:
     '''
     Initializes the central model to be trained.
 
@@ -99,13 +100,17 @@ def initialize_model(args: Any) -> torch.nn.Module:
         loss_reduction = reduction.SumReduction()
     else:
         loss_reduction = reduction.MeanReduction()
-    # logreg is a plain logistic regression algorithm optimized using SGD
+    # ridge acts on transformed femnist
+    if transformed_dataset:
+        return RidgeRegression(num_features, num_classes, device = device)
+        # return LogisticRegression(num_inputs = num_features, num_classes = num_classes, loss_reduction = loss_reduction)
     # cnn is a 2D convolutional neural network
     if args.model == 'cnn':
         return CNN(
             num_classes = 62,
             loss_reduction = loss_reduction
-        ) 
+        )
+    # logreg is a plain logistic regression algorithm optimized using SGD
     elif args.model == 'logreg':
         return LogisticRegression(
             num_inputs = 784, 
@@ -148,6 +153,8 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
     elif args.algorithm[0] == 'fedsvrg':
         if args.scheduler[0].lower() != 'none':
             print('[*] learning rate scheduler ignored in fedsvrg')
+        if args.dataset.removeprefix('femnist') in [ '_rocket2d', '_rocket2d_pca', '_vgg', '_vgg_pca' ]:
+            return algorithm.FedAvgTransformedSVRG
         return algorithm.FedAvgSVRG
     # federated algorithm not recognized
     raise RuntimeError(f'unrecognized federated algorithm \'{args.algorithm[0]}\', expected \'fedavg\', \'fedsvrg\', \'fedyogi\' or \'fedprox\'')
@@ -195,7 +202,7 @@ def get_arguments() -> Any:
     )
     
     parser.add_argument('--seed', type = int, default = 0, help = 'random seed')
-    parser.add_argument('--dataset', type = str, choices = ['femnist'], default = 'femnist', help = 'dataset name')
+    parser.add_argument('--dataset', type = str, choices = ['femnist', 'femnist_rocket2d', 'femnist_vgg', 'femnist_rocket2d_pca', 'femnist_vgg_pca'], default = 'femnist', help = 'dataset name')
     parser.add_argument('--niid', action = 'store_true', default = False, help = 'run the experiment with the non-IID partition (IID by default), only on FEMNIST dataset')
     parser.add_argument('--model', type = str, choices = ['logreg', 'cnn'], default = 'cnn', help = 'model name')
     parser.add_argument('--rounds', type = int, help = 'number of rounds')
@@ -209,6 +216,7 @@ def get_arguments() -> Any:
     parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
     parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling, like \'step\' or \'exp\' or \'linear\'')
     parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
+    parser.add_argument('--training_fraction', type = float, default = 1.0, choices = [ .80, .90, .95, 1.0 ], help = 'fraction of clients used for training (left ones are for validation)')
     parser.add_argument('--evaluation', type = int, default = 10, help = 'evaluation interval of training and validation set')
     parser.add_argument('--evaluators', type = float, default = float(250), help = 'fraction (if < 1.0) or number (if >= 1) of clients to be evaluated from training and validation set')
     parser.add_argument('--testing', action = 'store_true', default = True, help = 'run final evaluation on unseen testing clients')
@@ -222,23 +230,35 @@ if __name__ == '__main__':
     args = get_arguments()
     # random seed and more importantly deterministic algorithm versions are set
     set_seed(args.seed)
-    # model is compiled to CPU and operates on GPU
-    print(f'[+] initializing model... ', end = '', flush = True)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # FIXME no scheduling implemented in federated model
-    model = initialize_model(args)
-    model = model.to(device)
-    print('done')
     # federated datasets are shared among training and testing clients
     print('[+] loading datasets... ', end = '', flush = True)
+    # datasets = femnist.load(
+    #     directory = os.path.join(
+    #         'data', 
+    #         'femnist', 
+    #         'compressed', 
+    #         'niid' if args.niid else 'iid'
+    #     )
+    # )
+    dataset_type = args.dataset.removeprefix('femnist')
     datasets = femnist.load(
         directory = os.path.join(
             'data', 
             'femnist', 
             'compressed', 
-            'niid' if args.niid else 'iid'
-        )
+            f'niid{dataset_type}' if args.niid else f'iid{dataset_type}'
+        ),
+        transformed = len(dataset_type) > 0,
+        training_fraction = args.training_fraction
     )
+    num_features = datasets['training'][0][1].dataset.num_features
+    num_classes = 62
+    print('done')
+    # model is compiled to CPU and operates on GPU
+    print(f'[+] initializing model... ', end = '', flush = True)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = initialize_model(args, num_features, num_classes, device, transformed_dataset = len(dataset_type) > 0)
+    model = model.to(device)
     print('done')
     # client construction by dividing them in three groups (training, validation, testing)
     # each client of each group has its own private user dataset
@@ -246,7 +266,7 @@ if __name__ == '__main__':
     clients = client.construct(datasets, device, args)
     print('done')
     # simulation identifier
-    identifier = f"{'niid' if args.niid else 'iid'}_s{args.seed}_a{':'.join(args.algorithm)}_r{args.rounds}_e{args.epochs}_c{args.selected}_cs{':'.join(args.selection)}_lr{args.learning_rate}_lrs{':'.join(args.scheduler)}_bs{args.batch_size}_m{args.momentum}_wd{args.weight_decay}_rd{args.reduction}"
+    identifier = f"{'r2d2_' if len(dataset_type) > 0 else ''}{'niid' if args.niid else 'iid'}_s{args.seed}_a{':'.join(args.algorithm)}_r{args.rounds}_e{args.epochs}_c{args.selected}_cs{':'.join(args.selection)}_lr{args.learning_rate}_lrs{':'.join(args.scheduler)}_bs{args.batch_size}_m{args.momentum}_wd{args.weight_decay}_rd{args.reduction}"
     # server uses training clients and validation clients when fitting the central model
     # clients from testing group should be used at the very end
     server = server.Server(
@@ -261,6 +281,7 @@ if __name__ == '__main__':
     print(f'  [-] id: {identifier}')
     print(f'  [-] seed: {args.seed}')
     print(f"  [-] distribution: {'niid' if args.niid else 'iid'}")
+    print(f'  [-] dataset: {args.dataset}')
     print(f'  [-] batch size: {args.batch_size}')
     print(f'  [-] learning rate: {args.learning_rate}')
     print(f'  [-] momentum: {args.momentum}')
