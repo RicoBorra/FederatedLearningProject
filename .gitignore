@@ -5,3 +5,4 @@ data/emnist/*
 **/__pycache__
 env
 wandb
+**/checkpoints
