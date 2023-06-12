@@ -455,7 +455,7 @@ class FedLeastSquares(FedAlgorithm):
         loader = torch.utils.data.DataLoader(client.dataset, batch_size = len(client.dataset))
         x, y = next(iter(loader))
         # appends one column (for bias) to features matrix
-        ones = torch.ones((x.shape[0], 1), device = self.device)
+        ones = torch.ones((x.shape[0], 1))
         x = torch.cat((ones, x), dim = -1).to(self.device)
         # center class label in range [-1, 1]
         y = (torch.nn.functional.one_hot(y, num_classes = self.num_classes) * 2) - 1

@@ -138,7 +138,7 @@ if __name__ == '__main__':
     args = get_arguments()
     # random seed and more importantly deterministic algorithm versions are set
     set_seed(args.seed)
-    device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # federated datasets are shared among training and testing clients
     print('[+] loading datasets... ', end = '', flush = True)
     dataset_type = args.dataset.removeprefix('femnist_')

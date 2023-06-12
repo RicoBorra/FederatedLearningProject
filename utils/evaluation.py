@@ -108,7 +108,7 @@ class FederatedMetrics(object):
     def __init__(
         self, 
         n_classes: int = 62, 
-        device: torch.device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
+        device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ):
         '''
         Constructs the set of metrics for a set of clients to be evaluated.
