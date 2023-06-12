@@ -14,7 +14,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import datasets.femnist as femnist
 import models.ridge as ridge
 import utils.algorithm as algorithm
-import utils.reduction as reduction
 import client
 import server
 

@@ -145,8 +145,12 @@ def initialize_federated_algorithm(args: Any) -> algorithm.FedAlgorithm:
             tau = 1e-4 if len(args.algorithm) < 4 else float(args.algorithm[3]),
             eta = 10 ** (-2.5) if len(args.algorithm) < 5 else float(args.algorithm[4])
         )
+    elif args.algorithm[0] == 'fedsvrg':
+        if args.scheduler[0].lower() != 'none':
+            print('[*] learning rate scheduler ignored in fedsvrg')
+        return algorithm.FedAvgSVRG
     # federated algorithm not recognized
-    raise RuntimeError(f'unrecognized federated algorithm \'{args.algorithm[0]}\', expected \'fedavg\', \'fedyogi\' or \'fedprox\'')
+    raise RuntimeError(f'unrecognized federated algorithm \'{args.algorithm[0]}\', expected \'fedavg\', \'fedsvrg\', \'fedyogi\' or \'fedprox\'')
 
 def get_arguments() -> Any:
     '''

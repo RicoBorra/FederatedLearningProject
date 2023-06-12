@@ -58,7 +58,12 @@ class RidgeRegression(nn.Module):
             Linear logits and reduced loss
         '''
 
-        return None, None
+        logits = self(x)
+        loss = self.criterion(logits, y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        return logits, loss.item()
 
     def evaluate(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, float]:
         '''

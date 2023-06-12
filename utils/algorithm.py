@@ -481,11 +481,14 @@ class FedLeastSquares(FedAlgorithm):
 
 class FedAvgSVRG(FedAvg):
 
+    def __init__(self, state: OrderedDict[str, torch.Tensor]):
+        super().__init__(state, None)
+
     def visit(self, client: Client, model: nn.Module) -> Any:
         
         weight_estimate = self._state
-        gradient_estimates = [None for _ in range(len(model.parameters()))]
-        lr = self.lr
+        gradient_estimates = [ None for _ in model.parameters() ]
+        lr = client.args.learning_rate
         local_weight = deepcopy(self._state)
         running_avg = deepcopy(local_weight)
         running_size = 0
@@ -507,27 +510,37 @@ class FedAvgSVRG(FedAvg):
                 weight_estimate = running_avg
                 running_avg = deepcopy(local_weight)
                 running_size = 0
+                # FIXME losses = []
+                # FIXME sizes = []
+                total_loss = 0.0
+                total_size = 0
 
-                # compute gradients estimates
-                losses = []
-                sizes = []
+                model.load_state_dict(weight_estimate)
+
                 for x, y in client.loader:
                     x = x.to(client.device)
                     y = y.to(client.device)
-                    model.load_state_dict(weight_estimate)
+                    # model.load_state_dict(weight_estimate)
                     logits = model(x)
                     # central model loss and reduction
                     loss = model.criterion(logits, y)
+                    # loss = model.reduction(loss, y)
                     loss = loss.mean()
                     size = y.shape[0]
-                    losses.append(loss * size)
-                    sizes.append(size)
+                    # FIXME losses.append(loss * size)
+                    # FIXME sizes.append(size)
+                    total_loss += loss * size
+                    total_size += size
 
-                total_loss = sum(losses) / sum(sizes)
+                # FIXME total_loss = sum(losses) / sum(sizes)
+                total_loss = total_loss / total_size
                 model.zero_grad()
                 total_loss.backward()
+
                 for i, p in enumerate(model.parameters()):
-                    gradient_estimates[i] = p.grad
+                    gradient_estimates[i] = p.grad.detach()
+
+            print('here2')
                 
             # do the regular training protocol
             for x, y in client.loader:
@@ -547,8 +560,14 @@ class FedAvgSVRG(FedAvg):
                 loss1 = model.criterion(logits, y)
                 loss1 = loss1.mean()
             
-                l2penalty = weight_decay * sum([p.norm() for p in model.parameters()])
-                loss = loss1 - loss2 + l2penalty
+                # FIXME l2penalty = weight_decay * sum([p.norm() for p in model.parameters()])
+
+                l2penalty = 0.0
+
+                for param in model.parameters():
+                    l2penalty += param.norm()
+
+                loss = loss1 - loss2 + weight_decay * l2penalty
 
                 model.zero_grad()
                 loss.backward()

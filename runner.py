@@ -141,6 +141,8 @@ if __name__ == '__main__':
     parser.add_argument('--federated_smart', action = 'store_true', default = False, help = 'run federated femnist experiments using smart client selection')
     parser.add_argument('--federated_opt', action = 'store_true', default = False, help = 'run federated femnist experiments using state of the art algorithms')
     parser.add_argument('--federated_dg', action = 'store_true', default = False, help = 'run federated femnist experiments in domain generalization setting')
+    parser.add_argument('--federated_lsq', action = 'store_true', default = False, help = 'run federated femnist experiments using federated least squares algorithm')
+    parser.add_argument('--federated_svrg', action = 'store_true', default = False, help = 'run federated femnist experiments using SVRG accelerator as optimizer')
     arguments = parser.parse_args()
     # checkpoints directory for state dictionaries
     if not os.path.exists('checkpoints'):
@@ -302,6 +304,41 @@ if __name__ == '__main__':
             'log': [ arguments.log ]
         },
         enable = arguments.federated_opt
+    )
+    # federated baseline
+    runner.schedule(
+        script = 'experiments/federated_least_squares.py',
+        grid = {
+            'seed': [ 0 ],
+            'dataset': [ 'femnist_rocket2d_pca', 'femnist_vgg_pca' ],
+            'niid': [ True, False ],
+            'selected': [ 50, 100, 250, 500, 1000, None ],
+            'algorithm': [ 'fedlsq' ],
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_lsq
+    )
+    # federated baseline with SVRG accelerator
+    runner.schedule(
+        script = 'experiments/federated_baseline.py',
+        grid = {
+            'seed': [ 0, 42 ],
+            'dataset': [ 'femnist' ],
+            'niid': [ True, False ],
+            'model': [ 'cnn' ],
+            'rounds': [ 500 ],
+            'epochs': [ 1, 5, 10 ],
+            'selected': [ 5, 10, 20 ], # with 20 clients crashes on my laptop
+            'learning_rate': [ 0.05 ],
+            'batch_size': [ 64 ],
+            'weight_decay': [ 1e-5 ],
+            'momentum': [ 0.9 ],
+            'algorithm': [ 'fedsvrg' ],
+            'evaluation': [ 50 ],
+            'evaluators': [ 250 ],
+            'log': [ arguments.log ]
+        },
+        enable = arguments.federated_svrg
     )
     # run all experiments
     runner.run()
