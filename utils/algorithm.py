@@ -488,6 +488,7 @@ class FedAvgSVRG(FedAvg):
         
         weight_estimate = self._state
         gradient_estimates = [ None for _ in model.parameters() ]
+        loss_estimates = [ None for _ in model.parameters() ]
         lr = client.args.learning_rate
         local_weight = deepcopy(self._state)
         running_avg = deepcopy(local_weight)
@@ -539,9 +540,7 @@ class FedAvgSVRG(FedAvg):
 
                 for i, p in enumerate(model.parameters()):
                     gradient_estimates[i] = p.grad.detach()
-
-            print('here2')
-                
+    
             # do the regular training protocol
             for x, y in client.loader:
                 x = x.to(client.device)
@@ -554,21 +553,21 @@ class FedAvgSVRG(FedAvg):
                 loss2 = model.criterion(logits, y)
                 loss2 = loss2.mean()
 
+                model.zero_grad()
+                loss2.backward()
+                for i, p in enumerate(model.parameters()):
+                    loss_estimates[i] = p.grad.detach()
+
+
                 model.load_state_dict(local_weight)
                 logits = model(x)
                 # central model loss 
                 loss1 = model.criterion(logits, y)
                 loss1 = loss1.mean()
             
-                # FIXME l2penalty = weight_decay * sum([p.norm() for p in model.parameters()])
+                l2penalty = weight_decay * sum([p.norm() for p in model.parameters()])
 
-                l2penalty = 0.0
-
-                for param in model.parameters():
-                    l2penalty += param.norm()
-
-                loss = loss1 - loss2 + weight_decay * l2penalty
-
+                loss = loss1 + weight_decay * l2penalty
                 model.zero_grad()
                 loss.backward()
 
@@ -576,7 +575,7 @@ class FedAvgSVRG(FedAvg):
                 for i, p in enumerate(model.parameters()):
                     if p.grad is None:
                         continue
-                    p = p - lr * (p.grad + gradient_estimates[i])
+                    p = p - lr * (p.grad - loss_estimates[i] + gradient_estimates[i])
 
                 local_weight = model.state_dict()
                 # compute runnning average of model weights, to be used as estimate
@@ -592,3 +591,24 @@ class FedAvgSVRG(FedAvg):
         self._updates.append(update)
         # returns it to outside
         return update
+    
+    def aggregate(self):
+        '''
+        Updates central model state by computing a weighted average of clients' states with their local datasets' sizes.
+        '''
+        
+        # total size is the sum of the sizes from all contributing clients' datasets
+        n = sum([ size for _, size in self._updates ])
+        # for each architectural part of the state (e.g. 'fc.weight' or 'conv.bias'), the central state is obtained
+        # by averaging all clients state of the same part
+        for key in self._state.keys():
+            # detach is invoked to enforce the detachment from autograd graph when making computations on the resulting
+            # object
+            self._state[key] = torch.sum(
+                torch.stack([ size / n * weights[key].detach() for weights, size in self._updates ]),
+                dim = 0
+            )
+        # all updates have been consumed, so they can be removed
+        self._updates.clear()
+        # aggregation means the end of current round, so we can update clients learning rate
+        

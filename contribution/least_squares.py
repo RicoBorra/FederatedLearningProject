@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.femnist import Femnist
-from models.ridge_classifier import RidgeClassifier
+from models.ridge import RidgeClassifier
 from feature_extractors.vgg_19_bn import VGG_19_BN
 from feature_extractors.rocket2d import Rocket2D
 from sklearn.decomposition import PCA
