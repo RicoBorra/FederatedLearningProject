@@ -7,6 +7,7 @@ import torch.nn as nn
 from typing import Any, Iterable, Tuple
 
 from client import Client
+from utils.reduction import MeanReduction
 
 class FedAlgorithm(ABC):
     '''
@@ -477,3 +478,98 @@ class FedLeastSquares(FedAlgorithm):
         # computes closed form of ridge regression
         regularized_xtx = self.xtx + self.lmbda * torch.eye(n = self.num_features + 1, device = self.device)
         self._state['beta'] = torch.linalg.solve(regularized_xtx, self.xty)
+
+class FedAvgSVRG(FedAvg):
+
+    def visit(self, client: Client, model: nn.Module) -> Any:
+        
+        weight_estimate = self._state
+        gradient_estimates = [None for _ in range(len(model.parameters()))]
+        lr = self.lr
+        local_weight = deepcopy(self._state)
+        running_avg = deepcopy(local_weight)
+        running_size = 0
+        weight_decay = client.args.weight_decay
+        
+        if isinstance(next(iter(model.parameters())), nn.Parameter) == False:
+            raise NotImplementedError()
+
+        # train mode to enforce gradient computation
+        model.train()
+        # during local epochs the client model deviates
+        # from the original configuration passed by the
+        # central server
+
+        for epoch in range(client.args.epochs):
+
+            # compute weight estimate and gradient estimate
+            if epoch % 2 == 0:
+                weight_estimate = running_avg
+                running_avg = deepcopy(local_weight)
+                running_size = 0
+
+                # compute gradients estimates
+                losses = []
+                sizes = []
+                for x, y in client.loader:
+                    x = x.to(client.device)
+                    y = y.to(client.device)
+                    model.load_state_dict(weight_estimate)
+                    logits = model(x)
+                    # central model loss and reduction
+                    loss = model.criterion(logits, y)
+                    loss = loss.mean()
+                    size = y.shape[0]
+                    losses.append(loss * size)
+                    sizes.append(size)
+
+                total_loss = sum(losses) / sum(sizes)
+                model.zero_grad()
+                total_loss.backward()
+                for i, p in enumerate(model.parameters()):
+                    gradient_estimates[i] = p.grad
+                
+            # do the regular training protocol
+            for x, y in client.loader:
+                x = x.to(client.device)
+                y = y.to(client.device)
+
+                # needs to be computed first so we load local weight only once
+                model.load_state_dict(weight_estimate)
+                logits = model(x)
+                # loss of the best estimate
+                loss2 = model.criterion(logits, y)
+                loss2 = loss2.mean()
+
+                model.load_state_dict(local_weight)
+                logits = model(x)
+                # central model loss 
+                loss1 = model.criterion(logits, y)
+                loss1 = loss1.mean()
+            
+                l2penalty = weight_decay * sum([p.norm() for p in model.parameters()])
+                loss = loss1 - loss2 + l2penalty
+
+                model.zero_grad()
+                loss.backward()
+
+                # SVRG update rule
+                for i, p in enumerate(model.parameters()):
+                    if p.grad is None:
+                        continue
+                    p = p - lr * (p.grad + gradient_estimates[i])
+
+                local_weight = model.state_dict()
+                # compute runnning average of model weights, to be used as estimate
+                for run, cur in zip(running_avg.values(), local_weight.values()):
+                    run = (run * running_size + cur) / (running_size + 1)
+                running_size += 1
+                ## FIXME checks
+                # assert torch.isfinite(logits).all() and np.isfinite(loss)
+
+        # clone of updated client parameters and size of local dataset
+        update = deepcopy(model.state_dict()), len(client.dataset)
+        # appended to round history of updates
+        self._updates.append(update)
+        # returns it to outside
+        return update
