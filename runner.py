@@ -331,7 +331,7 @@ if __name__ == '__main__':
             'rounds': [ 500 ],
             'epochs': [ 1, 5, 10 ],
             'selected': [ 5, 10, 20 ], # with 20 clients crashes on my laptop
-            'learning_rate': [ 0.05 ],
+            'learning_rate': [ 0.1 ],
             'batch_size': [ 64 ],
             'weight_decay': [ 1e-5 ],
             'momentum': [ 0.9 ],
