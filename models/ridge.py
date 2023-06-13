@@ -69,9 +69,7 @@ class RidgeRegression(nn.Module):
         loss = self.criterion(logits, y_binarized)
         optimizer.zero_grad()
         loss.backward()
-        
-        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-        
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 10.0)
         optimizer.step()
         return logits, loss.item()
 

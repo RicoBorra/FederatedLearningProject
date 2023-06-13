@@ -216,7 +216,7 @@ def get_arguments() -> Any:
     parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
     parser.add_argument('--scheduler', metavar = ('scheduler', 'params'), nargs = '+', type = str, default = ['none'], help = 'learning rate decay scheduling, like \'step\' or \'exp\' or \'linear\'')
     parser.add_argument('--algorithm', metavar = ('algorithm', 'params'), nargs = '+', type = str, default = ['fedavg'], help = 'federated learning algorithm, like \'fedavg\' (default) or \'fedprox\'')
-    parser.add_argument('--training_fraction', type = float, default = 1.0, choices = [ .80, .90, .95, 1.0 ], help = 'fraction of clients used for training (left ones are for validation)')
+    parser.add_argument('--training_fraction', type = float, default = 0.80, choices = [ .80, .90, .95, 1.0 ], help = 'fraction of clients used for training (left ones are for validation)')
     parser.add_argument('--evaluation', type = int, default = 10, help = 'evaluation interval of training and validation set')
     parser.add_argument('--evaluators', type = float, default = float(250), help = 'fraction (if < 1.0) or number (if >= 1) of clients to be evaluated from training and validation set')
     parser.add_argument('--testing', action = 'store_true', default = True, help = 'run final evaluation on unseen testing clients')

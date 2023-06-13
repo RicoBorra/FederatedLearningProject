@@ -188,7 +188,7 @@ if __name__ == '__main__':
     print(f'  [-] remote log enabled: {args.log}')
     # initialize configuration for weights & biases log
     wandb.init(
-        mode = 'disabled', # 'online' if args.log else 'disabled',
+        mode = 'online' if args.log else 'disabled',
         project = 'federated',
         name = identifier,
         config = {

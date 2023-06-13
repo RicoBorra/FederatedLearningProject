@@ -311,7 +311,7 @@ if __name__ == '__main__':
         script = 'experiments/federated_least_squares.py',
         grid = {
             'seed': [ 0 ],
-            'dataset': [ 'femnist_vgg', 'femnist_vgg_pca', 'femnist_rocket2d', 'femnist_rocket2d_pca' ],
+            'dataset': [ 'femnist_vgg_pca', 'femnist_vgg', 'femnist_vgg_pca', 'femnist_rocket2d', 'femnist_rocket2d_pca' ],
             'niid': [ False, True ],
             'selected': [ None ],
             'training_fraction': [ .80, .90, .95, 1.0 ],
@@ -349,13 +349,13 @@ if __name__ == '__main__':
             'seed': [ 0 ],
             'dataset': [ 'femnist_rocket2d_pca', 'femnist_vgg_pca', 'femnist_rocket2d', 'femnist_vgg' ],
             'niid': [ False, True ],
-            'rounds': [ 500 ],
-            'epochs': [ 5, 10 ],
-            'selected': [ 10, 20 ], # with 20 clients crashes on my laptop
-            'learning_rate': [ 0.05 ],
+            'rounds': [ 1000 ],
+            'epochs': [ 1, 5, 10 ],
+            'selected': [ 50, 100 ],
+            'learning_rate': [ 0.05, 0.1 ],
             'scheduler': [ ('step', 0.75, 50) ], # scheduler ignore in fedsvrg
             'batch_size': [ 64 ],
-            'weight_decay': [ 0 ],
+            'weight_decay': [ 1 ],
             'momentum': [ 0.9 ],
             'algorithm': [ 'fedavg', 'fedsvrg' ],
             'evaluation': [ 50 ],
